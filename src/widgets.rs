@@ -4,8 +4,8 @@ use gpui::{
 
 use crate::models::TranscriptRow;
 use crate::theme::{
-    BG, BORDER, BORDER_STRONG, PRIMARY, PRIMARY_ACTIVE, PRIMARY_TEXT, RADIUS_PX, SURFACE,
-    SURFACE_HOVER, TEXT, TEXT_MUTED, TEXT_SECONDARY,
+    BORDER, BORDER_STRONG, PRIMARY, PRIMARY_ACTIVE, PRIMARY_TEXT, RADIUS_PX, RADIUS_SM_PX, SURFACE,
+    SURFACE_HOVER, TEXT, TEXT_MUTED, TEXT_SECONDARY, TRACK,
 };
 
 pub(crate) fn window_btn(
@@ -16,23 +16,40 @@ pub(crate) fn window_btn(
     let is_close = id == "win-close";
     div()
         .id(id)
+        .group(id)
         .w(px(46.))
         .h(px(36.))
         .flex()
         .items_center()
         .justify_center()
-        .text_size(px(12.))
-        .text_color(TEXT_SECONDARY)
         .hover(move |s| {
             if is_close {
-                s.bg(rgb(0xc42b1c)).text_color(TEXT)
+                s.bg(rgb(0xc42b1c))
             } else {
-                s.bg(SURFACE_HOVER).text_color(TEXT)
+                s.bg(TRACK)
             }
         })
-        .active(|s| s.opacity(0.9))
+        .active(move |s| {
+            if is_close {
+                s.bg(rgb(0xa52318))
+            } else {
+                s.bg(BORDER)
+            }
+        })
         .cursor_pointer()
-        .child(label)
+        .child(
+            div()
+                .text_size(px(12.))
+                .text_color(TEXT_SECONDARY)
+                .group_hover(id, move |s| {
+                    if is_close {
+                        s.text_color(rgb(0xffffff))
+                    } else {
+                        s.text_color(TEXT)
+                    }
+                })
+                .child(label),
+        )
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(move |_, window, cx| on_click(window, cx))
         .into_any_element()
@@ -40,15 +57,17 @@ pub(crate) fn window_btn(
 
 pub(crate) fn section_label(text: &'static str) -> impl IntoElement {
     div()
-        .text_size(px(11.))
+        .pl(px(4.))
+        .pb(px(2.))
+        .text_size(px(13.))
         .font_weight(FontWeight::MEDIUM)
-        .text_color(TEXT_MUTED)
-        .child(text.to_uppercase())
+        .text_color(TEXT_SECONDARY)
+        .child(text)
 }
 
 pub(crate) fn selection_dot(selected: bool) -> impl IntoElement {
     div()
-        .size(px(14.))
+        .size(px(18.))
         .rounded_full()
         .border_1()
         .border_color(if selected { PRIMARY } else { BORDER_STRONG })
@@ -59,7 +78,7 @@ pub(crate) fn selection_dot(selected: bool) -> impl IntoElement {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(div().size(px(5.)).rounded_full().bg(PRIMARY_TEXT)),
+                    .child(div().size(px(6.)).rounded_full().bg(PRIMARY_TEXT)),
             )
         })
 }
@@ -67,9 +86,9 @@ pub(crate) fn selection_dot(selected: bool) -> impl IntoElement {
 pub(crate) fn primary_button(label: &'static str, id: &'static str) -> impl IntoElement {
     div()
         .id(id)
-        .px(px(14.))
-        .py(px(8.))
-        .rounded(px(RADIUS_PX))
+        .px(px(16.))
+        .py(px(9.))
+        .rounded(px(RADIUS_SM_PX))
         .bg(PRIMARY)
         .text_color(PRIMARY_TEXT)
         .text_size(px(13.))
@@ -80,53 +99,59 @@ pub(crate) fn primary_button(label: &'static str, id: &'static str) -> impl Into
         .child(label)
 }
 
-pub(crate) fn history_row(row: TranscriptRow) -> impl IntoElement {
+/// Grouped transcript list — one surface, hairline dividers. No cards, no pills.
+pub(crate) fn history_list(rows: Vec<TranscriptRow>) -> impl IntoElement {
+    if rows.is_empty() {
+        return empty_history().into_any_element();
+    }
+
+    let last = rows.len().saturating_sub(1);
     div()
         .flex()
         .flex_col()
-        .gap(px(8.))
-        .px(px(14.))
-        .py(px(12.))
+        .w_full()
         .rounded(px(RADIUS_PX))
         .bg(SURFACE)
         .border_1()
         .border_color(BORDER)
-        .hover(|s| s.bg(SURFACE_HOVER).border_color(BORDER_STRONG))
+        .overflow_hidden()
+        .children(
+            rows.into_iter()
+                .enumerate()
+                .map(|(i, row)| history_row(row, i < last).into_any_element()),
+        )
+        .into_any_element()
+}
+
+fn history_row(row: TranscriptRow, show_divider: bool) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(4.))
+        .px(px(16.))
+        .py(px(14.))
+        .hover(|s| s.bg(SURFACE_HOVER))
+        .when(show_divider, |el| el.border_b_1().border_color(BORDER))
         .child(
             div()
-                .text_size(px(13.))
+                .text_size(px(14.))
                 .text_color(TEXT)
                 .line_height(px(20.))
                 .child(row.text),
         )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(10.))
-                .child(meta_pill(row.model))
-                .child(meta_text(row.duration)),
-        )
+        .child(meta_line(row.model, row.duration))
 }
 
-fn meta_pill(text: SharedString) -> impl IntoElement {
+fn meta_line(model: SharedString, duration: SharedString) -> impl IntoElement {
     div()
-        .px(px(7.))
-        .py(px(2.))
-        .rounded(px(6.))
-        .bg(BG)
-        .border_1()
-        .border_color(BORDER)
-        .text_size(px(11.))
-        .text_color(TEXT_SECONDARY)
-        .child(text)
-}
-
-fn meta_text(text: SharedString) -> impl IntoElement {
-    div()
-        .text_size(px(11.))
+        .flex()
+        .items_center()
+        .gap(px(6.))
+        .text_size(px(12.))
         .text_color(TEXT_MUTED)
-        .child(text)
+        .child(model)
+        .child(div().text_color(BORDER_STRONG).child("·"))
+        .child(duration)
 }
 
 pub(crate) fn empty_history() -> impl IntoElement {
@@ -136,17 +161,21 @@ pub(crate) fn empty_history() -> impl IntoElement {
         .items_center()
         .justify_center()
         .gap(px(6.))
-        .py(px(56.))
+        .py(px(72.))
+        .rounded(px(RADIUS_PX))
+        .bg(SURFACE)
+        .border_1()
+        .border_color(BORDER)
         .child(
             div()
-                .text_size(px(14.))
+                .text_size(px(15.))
                 .font_weight(FontWeight::MEDIUM)
-                .text_color(TEXT_SECONDARY)
+                .text_color(TEXT)
                 .child("No transcripts yet"),
         )
         .child(
             div()
-                .text_size(px(12.))
+                .text_size(px(13.))
                 .text_color(TEXT_MUTED)
                 .child("Hold Ctrl + Space to capture the first one"),
         )

@@ -2,9 +2,7 @@ use gpui::{Context, FontWeight, WindowControlArea, div, prelude::*, px};
 
 use crate::main_window::MainWindow;
 use crate::models::Tab;
-use crate::theme::{
-    BORDER, RADIUS_PX, SURFACE, SURFACE_ACTIVE, SURFACE_HOVER, TEXT, TEXT_MUTED, TEXT_SECONDARY,
-};
+use crate::theme::{RADIUS_PX, RADIUS_SM_PX, SURFACE, TEXT, TEXT_MUTED, TEXT_SECONDARY, TRACK};
 use crate::widgets::window_btn;
 
 impl MainWindow {
@@ -15,8 +13,7 @@ impl MainWindow {
             .items_center()
             .w_full()
             .h(px(36.))
-            .border_b_1()
-            .border_color(BORDER)
+            .bg(crate::theme::BG)
             .child(
                 div()
                     .id("titlebar-drag")
@@ -34,6 +31,9 @@ impl MainWindow {
                             .child("Hush"),
                     ),
             )
+            .child(window_btn("win-min", "─", |window, _| {
+                window.minimize_window();
+            }))
             .child(window_btn("win-close", "✕", |window, _| {
                 window.remove_window();
             }))
@@ -42,28 +42,30 @@ impl MainWindow {
     pub(super) fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
-            .items_center()
+            .items_end()
             .justify_between()
             .w_full()
-            .px(px(24.))
-            .pt(px(14.))
-            .pb(px(14.))
+            .px(px(28.))
+            .pt(px(28.))
+            .pb(px(20.))
             .child(
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(2.))
+                    .gap(px(4.))
                     .child(
                         div()
-                            .text_size(px(20.))
+                            .text_size(px(28.))
                             .font_weight(FontWeight::SEMIBOLD)
+                            .line_height(px(34.))
+                            .text_color(TEXT)
                             .child("Welcome back!"),
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(13.))
                             .text_color(TEXT_MUTED)
-                            .child("Hold Ctrl + Space · Ctrl + Alt + Space toggles"),
+                            .child("Hold Ctrl + Space to dictate"),
                     ),
             )
             .child(self.render_tabs(cx))
@@ -75,9 +77,7 @@ impl MainWindow {
             .p(px(3.))
             .gap(px(2.))
             .rounded(px(RADIUS_PX))
-            .bg(SURFACE)
-            .border_1()
-            .border_color(BORDER)
+            .bg(TRACK)
             .child(self.tab_button("History", Tab::History, cx))
             .child(self.tab_button("Settings", Tab::Settings, cx))
     }
@@ -91,9 +91,9 @@ impl MainWindow {
         let selected = self.tab == tab;
         div()
             .id(label)
-            .px(px(12.))
+            .px(px(14.))
             .py(px(6.))
-            .rounded(px(RADIUS_PX - 2.))
+            .rounded(px(RADIUS_SM_PX))
             .text_size(px(13.))
             .font_weight(if selected {
                 FontWeight::MEDIUM
@@ -101,12 +101,12 @@ impl MainWindow {
                 FontWeight::NORMAL
             })
             .text_color(if selected { TEXT } else { TEXT_SECONDARY })
-            .when(selected, |el| el.bg(SURFACE_HOVER))
+            .when(selected, |el| el.bg(SURFACE).shadow_sm())
             .hover(|s| {
                 if selected {
                     s
                 } else {
-                    s.bg(SURFACE_ACTIVE).text_color(TEXT)
+                    s.text_color(TEXT)
                 }
             })
             .active(|s| s.opacity(0.85))

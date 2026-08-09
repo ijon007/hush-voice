@@ -3,7 +3,8 @@ use gpui::{Context, FontWeight, div, prelude::*, px};
 use crate::main_window::MainWindow;
 use crate::models::ModelOption;
 use crate::theme::{
-    BG, BORDER, BORDER_STRONG, RADIUS_PX, SURFACE, SURFACE_ACTIVE, SURFACE_HOVER, TEXT, TEXT_MUTED,
+    BORDER, BORDER_STRONG, RADIUS_PX, RADIUS_SM_PX, SURFACE, SURFACE_ACTIVE, SURFACE_HOVER, TEXT,
+    TEXT_MUTED, TRACK,
 };
 use crate::widgets::{primary_button, section_label, selection_dot};
 
@@ -12,30 +13,49 @@ impl MainWindow {
         div()
             .flex()
             .flex_col()
-            .gap(px(20.))
+            .gap(px(24.))
             .w_full()
-            .child(section_label("Model"))
-            .child(self.render_model_list(cx))
-            .child(section_label("Hotkey"))
-            .child(self.render_hotkey())
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.))
+                    .child(section_label("Model"))
+                    .child(self.render_model_list(cx)),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.))
+                    .child(section_label("Hotkey"))
+                    .child(self.render_hotkey()),
+            )
             .child(
                 div()
                     .flex()
                     .justify_end()
-                    .pt(px(4.))
                     .child(primary_button("Save changes", "save-settings")),
             )
     }
 
     fn render_model_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let last = self.models.len().saturating_sub(1);
         let mut rows = Vec::new();
         for (index, model) in self.models.iter().enumerate() {
-            rows.push(self.model_row(index, model, cx).into_any_element());
+            rows.push(
+                self.model_row(index, model, index < last, cx)
+                    .into_any_element(),
+            );
         }
         div()
             .flex()
             .flex_col()
-            .gap(px(6.))
+            .rounded(px(RADIUS_PX))
+            .bg(SURFACE)
+            .border_1()
+            .border_color(BORDER)
+            .overflow_hidden()
             .children(rows)
     }
 
@@ -43,6 +63,7 @@ impl MainWindow {
         &self,
         index: usize,
         model: &ModelOption,
+        show_divider: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let selected = self.active_model == index;
@@ -51,12 +72,10 @@ impl MainWindow {
             .flex()
             .items_center()
             .justify_between()
-            .px(px(14.))
-            .py(px(12.))
-            .rounded(px(RADIUS_PX))
-            .bg(SURFACE)
-            .border_1()
-            .border_color(if selected { BORDER_STRONG } else { BORDER })
+            .px(px(16.))
+            .py(px(14.))
+            .when(show_divider, |el| el.border_b_1().border_color(BORDER))
+            .when(selected, |el| el.bg(SURFACE_HOVER))
             .hover(|s| s.bg(SURFACE_HOVER))
             .active(|s| s.bg(SURFACE_ACTIVE).opacity(0.95))
             .cursor_pointer()
@@ -69,6 +88,7 @@ impl MainWindow {
                         div()
                             .text_size(px(14.))
                             .font_weight(FontWeight::MEDIUM)
+                            .text_color(TEXT)
                             .child(model.name.clone()),
                     )
                     .child(
@@ -87,8 +107,8 @@ impl MainWindow {
             .flex()
             .items_center()
             .justify_between()
-            .px(px(14.))
-            .py(px(12.))
+            .px(px(16.))
+            .py(px(14.))
             .rounded(px(RADIUS_PX))
             .bg(SURFACE)
             .border_1()
@@ -102,6 +122,7 @@ impl MainWindow {
                         div()
                             .text_size(px(14.))
                             .font_weight(FontWeight::MEDIUM)
+                            .text_color(TEXT)
                             .child("Push to talk"),
                     )
                     .child(
@@ -115,8 +136,8 @@ impl MainWindow {
                 div()
                     .px(px(10.))
                     .py(px(5.))
-                    .rounded(px(8.))
-                    .bg(BG)
+                    .rounded(px(RADIUS_SM_PX))
+                    .bg(TRACK)
                     .border_1()
                     .border_color(BORDER_STRONG)
                     .text_size(px(12.))

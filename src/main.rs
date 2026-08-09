@@ -27,7 +27,7 @@ fn main() {
                     ..Default::default()
                 }),
                 is_resizable: false,
-                is_minimizable: false,
+                is_minimizable: true,
                 window_min_size: Some(size(px(720.), px(520.))),
                 ..Default::default()
             },

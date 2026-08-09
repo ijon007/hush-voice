@@ -1,4 +1,4 @@
-//! hush-voice visual tokens — neutral dark, white primary, medium radius.
+//! hush-voice visual tokens — calm light, black primary, soft radius.
 
 use gpui::Rgba;
 
@@ -11,27 +11,34 @@ const fn hex(rgb: u32) -> Rgba {
     }
 }
 
-/// Canvas behind everything. Near-black so elevated surfaces can breathe.
-pub const BG: Rgba = hex(0x0c0c0c);
-/// Raised surfaces (panels, rows, fields).
-pub const SURFACE: Rgba = hex(0x161616);
-/// Hover / selected wash on surfaces.
-pub const SURFACE_HOVER: Rgba = hex(0x1f1f1f);
-/// Pressed state — slightly darker than hover.
-pub const SURFACE_ACTIVE: Rgba = hex(0x181818);
-/// Hairline borders. Quiet, not decorative.
-pub const BORDER: Rgba = hex(0x2a2a2a);
-/// Stronger edge for focused / selected chrome.
-pub const BORDER_STRONG: Rgba = hex(0x3d3d3d);
+/// App canvas — warm light amber; white groups lift without going cool/violet.
+pub const BG: Rgba = hex(0xfaf6f0);
+/// Raised / grouped surfaces.
+pub const SURFACE: Rgba = hex(0xffffff);
+/// Hover wash on interactive rows.
+pub const SURFACE_HOVER: Rgba = hex(0xf8f4ee);
+/// Pressed state.
+pub const SURFACE_ACTIVE: Rgba = hex(0xf4efe8);
+/// Segmented control track / inset chrome.
+pub const TRACK: Rgba = hex(0xefe8df);
+/// Hairline borders.
+pub const BORDER: Rgba = hex(0xe8e0d6);
+/// Stronger edge for selected chrome / keycaps.
+pub const BORDER_STRONG: Rgba = hex(0xd9cfc3);
 
-pub const TEXT: Rgba = hex(0xffffff);
-pub const TEXT_SECONDARY: Rgba = hex(0xa3a3a3);
-pub const TEXT_MUTED: Rgba = hex(0x737373);
+pub const TEXT: Rgba = hex(0x1d1d1f);
+pub const TEXT_SECONDARY: Rgba = hex(0x6e6e73);
+pub const TEXT_MUTED: Rgba = hex(0x8e8e93);
 
-/// Primary CTA: white fill, dark label.
-pub const PRIMARY: Rgba = hex(0xffffff);
-pub const PRIMARY_TEXT: Rgba = hex(0x0c0c0c);
-pub const PRIMARY_ACTIVE: Rgba = hex(0xe8e8e8);
+/// Primary CTA: near-black fill, white label.
+pub const PRIMARY: Rgba = hex(0x1d1d1f);
+pub const PRIMARY_TEXT: Rgba = hex(0xffffff);
+pub const PRIMARY_ACTIVE: Rgba = hex(0x3a3a3c);
 
-/// Medium radius — neither chip nor pill.
-pub const RADIUS_PX: f32 = 10.0;
+/// Recording / listening — used sparingly (overlay only).
+pub const RECORDING: Rgba = hex(0xff3b30);
+
+/// Soft continuous radius for groups and controls.
+pub const RADIUS_PX: f32 = 12.0;
+/// Tighter radius for chips / keycaps inside groups.
+pub const RADIUS_SM_PX: f32 = 8.0;

@@ -1,19 +1,20 @@
 use std::time::Duration;
 
 use gpui::{
-    App, Bounds, Context, FontWeight, Global, Timer, Window, WindowBackgroundAppearance,
-    WindowBounds, WindowHandle, WindowKind, WindowOptions, div, point, prelude::*, px, size,
+    App, Bounds, BoxShadow, Context, FontWeight, Global, Hsla, Timer, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div, hsla,
+    point, prelude::*, px, size,
 };
 
-use crate::theme::{PRIMARY, SURFACE, TEXT};
+use crate::theme::{BORDER_STRONG, RADIUS_PX, RECORDING, SURFACE, TEXT};
 
 /// ponytail: true = pill stays up for screenshots (skips hide on key-up)
 pub(crate) const PERSIST_OVERLAY: bool = false;
 
-const OVERLAY_WIDTH: f32 = 100.;
-const OVERLAY_HEIGHT: f32 = 20.;
-const OVERLAY_RADIUS: f32 = 50.;
-const OVERLAY_BOTTOM_MARGIN: f32 = 56.;
+/// Window includes padding so the pill’s soft shadow isn’t clipped by the region.
+const OVERLAY_WIDTH: f32 = 168.;
+const OVERLAY_HEIGHT: f32 = 56.;
+const OVERLAY_BOTTOM_MARGIN: f32 = 48.;
 
 pub(crate) struct OverlayState {
     pub handle: Option<WindowHandle<RecordingPill>>,
@@ -33,23 +34,55 @@ impl Render for RecordingPill {
             self.shaped = clip_overlay_to_capsule(window);
         }
 
+        // Outer transparent canvas; inner material floats with a soft shadow.
         div()
             .size_full()
             .flex()
             .items_center()
             .justify_center()
-            .gap(px(6.))
-            .px(px(12.))
-            .rounded(px(OVERLAY_RADIUS))
-            .overflow_hidden()
-            .bg(SURFACE)
-            .child(div().size(px(5.)).rounded_full().bg(PRIMARY))
             .child(
                 div()
-                    .text_size(px(11.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(TEXT)
-                    .child("Listening"),
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(8.))
+                    .px(px(16.))
+                    .h(px(36.))
+                    .rounded(px(RADIUS_PX + 6.))
+                    .overflow_hidden()
+                    .bg(SURFACE)
+                    .border_1()
+                    .border_color(BORDER_STRONG)
+                    .shadow(vec![BoxShadow {
+                        color: hsla(0.0, 0.0, 0.0, 0.12),
+                        offset: point(px(0.), px(4.)),
+                        blur_radius: px(16.),
+                        spread_radius: px(0.),
+                    }])
+                    .child(
+                        div()
+                            .size(px(7.))
+                            .rounded_full()
+                            .bg(RECORDING)
+                            .shadow(vec![BoxShadow {
+                                color: Hsla {
+                                    h: 0.01,
+                                    s: 0.9,
+                                    l: 0.55,
+                                    a: 0.35,
+                                },
+                                offset: point(px(0.), px(0.)),
+                                blur_radius: px(6.),
+                                spread_radius: px(0.),
+                            }]),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(TEXT)
+                            .child("Listening"),
+                    ),
             )
     }
 }
@@ -180,7 +213,7 @@ fn apply_overlay_dwm(_window: &Window) {
     }
 }
 
-/// Clip HWND to a capsule so transparent corners don't show as a rectangle.
+/// Soft-round the HWND so transparent corners don’t read as a hard rectangle.
 fn clip_overlay_to_capsule(_window: &Window) -> bool {
     #[cfg(not(windows))]
     {
@@ -207,13 +240,14 @@ fn clip_overlay_to_capsule(_window: &Window) -> bool {
 
         let width = rect.right - rect.left;
         let height = rect.bottom - rect.top;
-        if width < 80 || height < 20 {
+        if width < 100 || height < 40 {
             return false;
         }
 
         unsafe {
-            // right/bottom exclusive — pass client width/height as the exclusive edge.
-            let region = CreateRoundRectRgn(0, 0, width, height, height, height);
+            // Soft round — enough to hide corners; pill itself is rounded in GPUI.
+            let radius = height;
+            let region = CreateRoundRectRgn(0, 0, width, height, radius, radius);
             SetWindowRgn(hwnd, Some(region), true);
             raise_overlay_window(hwnd);
         }

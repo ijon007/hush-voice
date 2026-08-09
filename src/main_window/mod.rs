@@ -13,7 +13,6 @@ pub(crate) struct MainWindow {
     active_model: usize,
     hotkey: SharedString,
     history: Vec<TranscriptRow>,
-    history_filter: Option<&'static str>,
 }
 
 impl MainWindow {
@@ -40,7 +39,6 @@ impl MainWindow {
             active_model: 0,
             hotkey: "Ctrl + Space".into(),
             history: sample_history(),
-            history_filter: None,
         }
     }
 
@@ -52,19 +50,6 @@ impl MainWindow {
     fn select_model(&mut self, index: usize, cx: &mut Context<Self>) {
         self.active_model = index;
         cx.notify();
-    }
-
-    fn set_history_filter(&mut self, filter: Option<&'static str>, cx: &mut Context<Self>) {
-        self.history_filter = filter;
-        cx.notify();
-    }
-
-    fn filtered_history(&self) -> impl Iterator<Item = &TranscriptRow> {
-        let filter = self.history_filter;
-        self.history.iter().filter(move |row| match filter {
-            None => true,
-            Some(model) => row.model.as_ref() == model,
-        })
     }
 }
 
@@ -84,13 +69,13 @@ impl Render for MainWindow {
                     .id("main-content")
                     .flex_1()
                     .w_full()
-                    .px(px(24.))
-                    .pb(px(24.))
-                    .pt(px(4.))
+                    .px(px(28.))
+                    .pb(px(28.))
+                    .pt(px(8.))
                     .overflow_y_scroll()
                     .child(match self.tab {
                         Tab::Settings => self.render_settings(cx).into_any_element(),
-                        Tab::History => self.render_history(cx).into_any_element(),
+                        Tab::History => self.render_history().into_any_element(),
                     }),
             )
     }
