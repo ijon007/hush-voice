@@ -84,16 +84,27 @@ impl Render for MainWindow {
                     .w_full()
                     .child(self.render_sidebar(cx))
                     .child(
+                        // Inset content panel.
                         div()
-                            .id("main-content")
-                            .bg(t.panel)
                             .flex_1()
                             .h_full()
-                            .px(px(36.))
-                            .pt(px(24.))
-                            .pb(px(32.))
-                            .overflow_y_scroll()
-                            .child(content),
+                            .pr(px(8.))
+                            .pb(px(8.))
+                            .pt(px(2.))
+                            .child(
+                                div()
+                                    .id("main-content")
+                                    .size_full()
+                                    .rounded(px(12.))
+                                    .bg(t.panel)
+                                    .border_1()
+                                    .border_color(t.border)
+                                    .px(px(36.))
+                                    .pt(px(28.))
+                                    .pb(px(32.))
+                                    .overflow_y_scroll()
+                                    .child(content),
+                            ),
                     ),
             )
     }

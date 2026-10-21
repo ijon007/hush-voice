@@ -1,6 +1,7 @@
 use gpui::{Context, FontWeight, WindowControlArea, div, prelude::*, px};
 
 use crate::main_window::MainWindow;
+use crate::main_window::sidebar::{ITEM_PAD, SIDEBAR_PAD};
 use crate::theme::theme;
 use crate::widgets::window_btn;
 
@@ -15,8 +16,6 @@ impl MainWindow {
             .h(px(36.))
             .flex_none()
             .bg(t.bg)
-            .border_b_1()
-            .border_color(t.border)
             .child(
                 div()
                     .id("titlebar-drag")
@@ -24,7 +23,7 @@ impl MainWindow {
                     .h_full()
                     .flex()
                     .items_center()
-                    .pl(px(16.))
+                    .pl(px(SIDEBAR_PAD + ITEM_PAD))
                     .window_control_area(WindowControlArea::Drag)
                     .child(
                         div()

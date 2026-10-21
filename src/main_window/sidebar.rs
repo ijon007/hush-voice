@@ -1,8 +1,13 @@
-use gpui::{Context, FontWeight, div, prelude::*, px, transparent_black};
+use gpui::{Context, FontWeight, div, prelude::*, px, svg};
 
 use crate::main_window::MainWindow;
 use crate::models::Page;
-use crate::theme::{RADIUS_SM_PX, Theme, theme};
+use crate::theme::{Theme, theme};
+
+/// Horizontal inset of the sidebar column; the title bar text uses
+/// `SIDEBAR_PAD + ITEM_PAD` so "Hush" lines up with item content.
+pub(super) const SIDEBAR_PAD: f32 = 10.;
+pub(super) const ITEM_PAD: f32 = 10.;
 
 impl MainWindow {
     pub(super) fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -11,60 +16,58 @@ impl MainWindow {
             .flex()
             .flex_col()
             .justify_between()
-            .w(px(216.))
+            .w(px(212.))
             .h_full()
             .flex_none()
-            .px(px(12.))
-            .pt(px(16.))
-            .pb(px(16.))
-            .bg(t.bg)
-            .border_r_1()
-            .border_color(t.border)
+            .px(px(SIDEBAR_PAD))
+            .pt(px(6.))
+            .pb(px(10.))
             .child(
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(2.))
-                    .child(
-                        div()
-                            .px(px(12.))
-                            .pb(px(8.))
-                            .text_size(px(11.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.text_muted)
-                            .child("MENU"),
-                    )
-                    .child(self.nav_item(t, "Home", Page::Home, cx))
-                    .child(self.nav_item(t, "Dictionary", Page::Dictionary, cx))
-                    .child(self.nav_item(t, "Shortcuts", Page::Shortcuts, cx)),
+                    .gap(px(1.))
+                    .child(self.nav_item(t, "Home", "icons/home.svg", Page::Home, cx))
+                    .child(self.nav_item(t, "Dictionary", "icons/book.svg", Page::Dictionary, cx))
+                    .child(self.nav_item(t, "Shortcuts", "icons/keyboard.svg", Page::Shortcuts, cx)),
             )
-            .child(self.nav_item(t, "Settings", Page::Settings, cx))
+            .child(self.nav_item(t, "Settings", "icons/settings.svg", Page::Settings, cx))
     }
 
     fn nav_item(
         &self,
         t: Theme,
         label: &'static str,
+        icon: &'static str,
         page: Page,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let selected = self.page == page;
+        let fg = if selected { t.text } else { t.text_secondary };
         div()
             .id(label)
+            .group(label)
             .flex()
             .items_center()
-            .h(px(34.))
-            .px(px(12.))
-            .rounded(px(RADIUS_SM_PX))
-            .border_1()
+            .gap(px(8.))
+            .h(px(31.))
+            .px(px(ITEM_PAD))
+            .rounded(px(7.))
             .text_size(px(13.))
             .font_weight(if selected { FontWeight::MEDIUM } else { FontWeight::NORMAL })
-            .text_color(if selected { t.text } else { t.text_secondary })
-            .when(selected, |el| el.bg(t.nav_selected).border_color(transparent_black()))
-            .when(!selected, |el| el.border_color(transparent_black()))
-            .hover(move |s| if selected { s } else { s.bg(t.nav_hover).text_color(t.text) })
-            .active(|s| s.opacity(0.85))
+            .text_color(fg)
+            .when(selected, |el| el.bg(t.nav_selected))
+            .when(!selected, |el| el.hover(move |s| s.bg(t.nav_hover).text_color(t.text)))
+            .active(|s| s.opacity(0.9))
             .cursor_pointer()
+            .child(
+                svg()
+                    .path(icon)
+                    .size(px(16.))
+                    .flex_none()
+                    .text_color(fg)
+                    .group_hover(label, move |s| s.text_color(t.text)),
+            )
             .child(label)
             .on_click(cx.listener(move |this, _, _, cx| this.set_page(page, cx)))
     }

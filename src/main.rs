@@ -1,4 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod assets;
 mod hotkey;
 mod main_window;
 mod models;
@@ -15,7 +16,7 @@ use main_window::MainWindow;
 use overlay::{PERSIST_OVERLAY, show_overlay};
 
 fn main() {
-    Application::new().run(|cx: &mut App| {
+    Application::new().with_assets(assets::Assets).run(|cx: &mut App| {
         theme::init(cx);
         register_hotkey(cx);
 
