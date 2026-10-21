@@ -3,7 +3,9 @@ mod pages;
 mod settings;
 mod sidebar;
 
-use gpui::{Context, SharedString, Subscription, Window, div, prelude::*, px};
+use std::time::Duration;
+
+use gpui::{ClipboardItem, Context, SharedString, Subscription, Timer, Window, div, prelude::*, px};
 
 use crate::models::{ModelOption, Page, TranscriptRow, sample_history};
 use crate::theme::theme;
@@ -14,6 +16,8 @@ pub(crate) struct MainWindow {
     active_model: usize,
     hotkey: SharedString,
     history: Vec<TranscriptRow>,
+    /// History row whose text was just copied (shows a check for ~1.2s).
+    copied: Option<usize>,
     _appearance: Subscription,
 }
 
@@ -43,6 +47,7 @@ impl MainWindow {
             active_model: 0,
             hotkey: "Ctrl + Space".into(),
             history: sample_history(),
+            copied: None,
             _appearance: appearance,
         }
     }
@@ -50,6 +55,23 @@ impl MainWindow {
     fn set_page(&mut self, page: Page, cx: &mut Context<Self>) {
         self.page = page;
         cx.notify();
+    }
+
+    fn copy_transcript(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(row) = self.history.get(index) else { return };
+        cx.write_to_clipboard(ClipboardItem::new_string(row.text.to_string()));
+        self.copied = Some(index);
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            Timer::after(Duration::from_millis(1200)).await;
+            let _ = this.update(cx, |this, cx| {
+                if this.copied == Some(index) {
+                    this.copied = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     fn select_model(&mut self, index: usize, cx: &mut Context<Self>) {

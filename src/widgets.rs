@@ -1,6 +1,5 @@
-use gpui::{App, FontWeight, MouseButton, SharedString, Window, div, prelude::*, px, rgb};
+use gpui::{App, FontWeight, MouseButton, Window, div, prelude::*, px, rgb};
 
-use crate::models::TranscriptRow;
 use crate::theme::{RADIUS_PX, RADIUS_SM_PX, Theme};
 
 pub(crate) fn window_btn(
@@ -94,57 +93,6 @@ pub(crate) fn card(t: Theme) -> gpui::Div {
         .border_1()
         .border_color(t.border)
         .overflow_hidden()
-}
-
-/// Grouped transcript list: one surface, hairline dividers.
-pub(crate) fn history_list(t: Theme, rows: Vec<TranscriptRow>) -> impl IntoElement {
-    if rows.is_empty() {
-        return empty_state(t, "No transcripts yet", "Hold Ctrl + Space to capture the first one")
-            .into_any_element();
-    }
-
-    let last = rows.len().saturating_sub(1);
-    card(t)
-        .children(
-            rows.into_iter()
-                .enumerate()
-                .map(|(i, row)| history_row(t, i, row, i < last).into_any_element()),
-        )
-        .into_any_element()
-}
-
-fn history_row(t: Theme, index: usize, row: TranscriptRow, show_divider: bool) -> impl IntoElement {
-    div()
-        .id(("history-row", index))
-        .flex()
-        .flex_col()
-        .gap(px(4.))
-        .px(px(16.))
-        .py(px(14.))
-        .hover(move |s| s.bg(t.surface_hover))
-        .when(index == 0, |el| el.rounded_t(px(RADIUS_PX - 1.)))
-        .when(!show_divider, |el| el.rounded_b(px(RADIUS_PX - 1.)))
-        .when(show_divider, |el| el.border_b_1().border_color(t.border))
-        .child(
-            div()
-                .text_size(px(14.))
-                .text_color(t.text)
-                .line_height(px(20.))
-                .child(row.text),
-        )
-        .child(meta_line(t, row.model, row.duration))
-}
-
-fn meta_line(t: Theme, model: SharedString, duration: SharedString) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(6.))
-        .text_size(px(12.))
-        .text_color(t.text_muted)
-        .child(model)
-        .child(div().text_color(t.border_strong).child("\u{00b7}"))
-        .child(duration)
 }
 
 pub(crate) fn empty_state(t: Theme, title: &'static str, body: &'static str) -> impl IntoElement {
