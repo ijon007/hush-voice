@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use gpui::{
-    App, Bounds, BoxShadow, Context, FontWeight, Global, Hsla, Timer, Window,
+    App, Bounds, BoxShadow, Context, FontWeight, Global, Timer, Window,
     WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div, hsla,
-    point, prelude::*, px, size,
+    point, prelude::*, px, size, svg,
 };
 
 use crate::theme::{RADIUS_PX, theme};
@@ -61,21 +61,13 @@ impl Render for RecordingPill {
                         spread_radius: px(0.),
                     }])
                     .child(
-                        div()
-                            .size(px(7.))
-                            .rounded_full()
-                            .bg(t.recording)
-                            .shadow(vec![BoxShadow {
-                                color: Hsla {
-                                    h: 0.01,
-                                    s: 0.9,
-                                    l: 0.55,
-                                    a: 0.35,
-                                },
-                                offset: point(px(0.), px(0.)),
-                                blur_radius: px(6.),
-                                spread_radius: px(0.),
-                            }]),
+                        // Waveform mark (alpha mask) tinted with the pill's text color.
+                        svg()
+                            .path("logo/mark.svg")
+                            .w(px(16.))
+                            .h(px(14.4))
+                            .flex_none()
+                            .text_color(t.text),
                     )
                     .child(
                         div()

@@ -54,8 +54,6 @@ pub struct Theme {
     pub primary: Rgba,
     pub primary_text: Rgba,
     pub primary_active: Rgba,
-    /// Recording / listening dot.
-    pub recording: Rgba,
     /// Window close button.
     pub close_hover: Rgba,
     pub close_active: Rgba,
@@ -84,7 +82,6 @@ impl Theme {
         primary: hex(INK),
         primary_text: hex(0xffffff),
         primary_active: hex(0x2c2925),
-        recording: hex(0xff3b30),
         close_hover: hex(0xc42b1c),
         close_active: hex(0xa52318),
     };
@@ -107,7 +104,6 @@ impl Theme {
         primary: hex(0xf2eee8),
         primary_text: hex(INK),
         primary_active: hex(0xdcd6cd),
-        recording: hex(0xff453a),
         close_hover: hex(0xc42b1c),
         close_active: hex(0xa52318),
     };
@@ -141,9 +137,13 @@ pub fn set_theme_mode(mode: ThemeMode, cx: &mut App) {
     cx.refresh_windows();
 }
 
-fn settings_path() -> Option<std::path::PathBuf> {
+pub(crate) fn app_dir() -> Option<std::path::PathBuf> {
     let base = std::env::var_os("APPDATA")?;
-    Some(std::path::PathBuf::from(base).join("hush-voice").join("theme"))
+    Some(std::path::PathBuf::from(base).join("hush-voice"))
+}
+
+fn settings_path() -> Option<std::path::PathBuf> {
+    Some(app_dir()?.join("theme"))
 }
 
 fn load_mode() -> ThemeMode {
