@@ -80,9 +80,13 @@ impl LevelMeter {
 
     /// Returns the 0..1 level for this frame (exactly 0 while gated).
     pub(crate) fn update(&mut self, db: f32, dt: f32) -> f32 {
-        // Seed the floor from the quietest of the first frames (gate stays closed).
-        if self.warmup < 0.15 {
-            self.floor_db = if self.warmup == 0. { db } else { self.floor_db.min(db) };
+        // Seed the floor from the room (gate stays closed): skip the first 200ms
+        // (device start-up buffers read near-silent), then take the quietest of
+        // the next 150ms.
+        if self.warmup < 0.35 {
+            if self.warmup >= 0.2 {
+                self.floor_db = if self.floor_db == 0. { db } else { self.floor_db.min(db) };
+            }
             self.warmup += dt;
             return 0.;
         }
@@ -90,7 +94,7 @@ impl LevelMeter {
         if self.open {
             // Steady noise (fan, hum) must not hold the gate open forever:
             // creep toward it slowly; real speech is far too short to matter.
-            self.floor_db += (db - self.floor_db) * (1. - (-dt / 4.0).exp());
+            self.floor_db += (db - self.floor_db) * (1. - (-dt / 3.0).exp());
         }
         self.open = if self.open { rel > GATE_CLOSE_DB } else { rel > GATE_OPEN_DB };
         if !self.open {
@@ -509,10 +513,12 @@ mod tests {
     fn silence_stays_flat_and_speech_moves() {
         let mut m = LevelMeter::new();
         let dt = 1. / 60.;
-        // Starts in steady -42 dB room noise (seen live): must settle closed.
-        let mut tail = 0.;
-        for _ in 0..600 {
-            tail = m.update(-42., dt);
+        // Device start-up reads ~-80 dB, then steady -42 dB room noise (seen
+        // live): must stay closed from the first visible frame.
+        let mut tail: f32 = 0.;
+        for i in 0..600 {
+            let db = if i < 8 { -80. } else { -42. };
+            tail = tail.max(m.update(db, dt));
         }
         assert_eq!(tail, 0., "steady noise must close the gate");
         let mut m = LevelMeter::new();
