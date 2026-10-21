@@ -1,9 +1,11 @@
 use gpui::SharedString;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Tab {
+pub(crate) enum Page {
+    Home,
+    Dictionary,
+    Shortcuts,
     Settings,
-    History,
 }
 
 #[derive(Clone)]

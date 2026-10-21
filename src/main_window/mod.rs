@@ -1,14 +1,16 @@
 mod chrome;
 mod history;
+mod pages;
 mod settings;
+mod sidebar;
 
 use gpui::{Context, SharedString, Window, div, prelude::*, px};
 
-use crate::models::{ModelOption, Tab, TranscriptRow, sample_history};
+use crate::models::{ModelOption, Page, TranscriptRow, sample_history};
 use crate::theme::{BG, TEXT};
 
 pub(crate) struct MainWindow {
-    tab: Tab,
+    page: Page,
     models: Vec<ModelOption>,
     active_model: usize,
     hotkey: SharedString,
@@ -18,22 +20,22 @@ pub(crate) struct MainWindow {
 impl MainWindow {
     pub(crate) fn new() -> Self {
         Self {
-            tab: Tab::History,
+            page: Page::Home,
             models: vec![
                 ModelOption {
                     id: "whisper-local",
                     name: "Whisper Local".into(),
-                    detail: "On-device · fast · private".into(),
+                    detail: "On-device \u{00b7} fast \u{00b7} private".into(),
                 },
                 ModelOption {
                     id: "whisper-large",
                     name: "Whisper Large".into(),
-                    detail: "Higher accuracy · slower".into(),
+                    detail: "Higher accuracy \u{00b7} slower".into(),
                 },
                 ModelOption {
                     id: "cloud-stt",
                     name: "Cloud STT".into(),
-                    detail: "Lowest latency · requires network".into(),
+                    detail: "Lowest latency \u{00b7} requires network".into(),
                 },
             ],
             active_model: 0,
@@ -42,8 +44,8 @@ impl MainWindow {
         }
     }
 
-    fn set_tab(&mut self, tab: Tab, cx: &mut Context<Self>) {
-        self.tab = tab;
+    fn set_page(&mut self, page: Page, cx: &mut Context<Self>) {
+        self.page = page;
         cx.notify();
     }
 
@@ -55,6 +57,13 @@ impl MainWindow {
 
 impl Render for MainWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let content = match self.page {
+            Page::Home => self.render_home().into_any_element(),
+            Page::Settings => self.render_settings_page(cx).into_any_element(),
+            Page::Dictionary => self.render_dictionary().into_any_element(),
+            Page::Shortcuts => self.render_shortcuts().into_any_element(),
+        };
+
         div()
             .flex()
             .flex_col()
@@ -63,20 +72,24 @@ impl Render for MainWindow {
             .text_color(TEXT)
             .font_family(".SystemUIFont")
             .child(self.render_titlebar())
-            .child(self.render_header(cx))
             .child(
                 div()
-                    .id("main-content")
+                    .flex()
                     .flex_1()
+                    .min_h(px(0.))
                     .w_full()
-                    .px(px(28.))
-                    .pb(px(28.))
-                    .pt(px(8.))
-                    .overflow_y_scroll()
-                    .child(match self.tab {
-                        Tab::Settings => self.render_settings(cx).into_any_element(),
-                        Tab::History => self.render_history().into_any_element(),
-                    }),
+                    .child(self.render_sidebar(cx))
+                    .child(
+                        div()
+                            .id("main-content")
+                            .flex_1()
+                            .h_full()
+                            .px(px(36.))
+                            .pt(px(24.))
+                            .pb(px(32.))
+                            .overflow_y_scroll()
+                            .child(content),
+                    ),
             )
     }
 }
