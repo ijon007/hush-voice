@@ -1,4 +1,4 @@
-use gpui::{Context, FontWeight, div, prelude::*, px, svg};
+use gpui::{Context, FontWeight, SharedString, div, prelude::*, px, svg};
 
 use crate::main_window::MainWindow;
 use crate::models::ModelOption;
@@ -39,7 +39,7 @@ impl MainWindow {
             .w_full()
             .child(section(t, "Appearance", self.render_appearance(t, cx)))
             .child(section(t, "Model", self.render_model_list(t, cx)))
-            .child(section(t, "Hotkey", self.render_hotkey(t)))
+            .child(section(t, "Shortcuts", self.render_hotkey(t)))
             .child(
                 div()
                     .flex()
@@ -161,27 +161,52 @@ impl MainWindow {
     }
 
     fn render_hotkey(&self, t: Theme) -> impl IntoElement {
+        let hold: Vec<SharedString> =
+            self.hotkey.split(" + ").map(|k| SharedString::from(k.to_string())).collect();
         card(t)
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .px(px(16.))
-            .py(px(14.))
-            .child(row_text(t, "Push to talk", "Hold to show overlay, release to hide"))
-            .child(
-                div()
-                    .px(px(10.))
-                    .py(px(5.))
-                    .rounded(px(RADIUS_SM_PX))
-                    .bg(t.track)
-                    .border_1()
-                    .border_color(t.border_strong)
-                    .text_size(px(12.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(t.text)
-                    .child(self.hotkey.clone()),
-            )
+            .child(shortcut_row(t, "Hold to dictate", "Hold to record, release to stop", hold, true))
+            .child(shortcut_row(
+                t,
+                "Toggle dictation",
+                "Press to lock recording on, press again to stop",
+                vec!["Ctrl".into(), "Win".into(), "Alt".into()],
+                false,
+            ))
     }
+}
+
+/// One shortcut row: title/detail on the left, key caps on the right.
+fn shortcut_row(
+    t: Theme,
+    title: &'static str,
+    detail: &'static str,
+    keys: Vec<SharedString>,
+    divider: bool,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .px(px(16.))
+        .py(px(14.))
+        .when(divider, |el| el.border_b_1().border_color(t.border))
+        .child(row_text(t, title, detail))
+        .child(div().flex().items_center().gap(px(4.)).children(keys.into_iter().map(move |k| {
+            div()
+                .min_w(px(26.))
+                .flex()
+                .justify_center()
+                .px(px(8.))
+                .py(px(4.))
+                .rounded(px(RADIUS_SM_PX))
+                .bg(t.track)
+                .border_1()
+                .border_color(t.border_strong)
+                .text_size(px(12.))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(t.text)
+                .child(k)
+        })))
 }
 
 /// Tiny Home tab, painted in a fixed palette so Light and Dark can sit side by side.
