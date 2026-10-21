@@ -16,9 +16,11 @@ pub const BG: Rgba = hex(0xfaf6f0);
 /// Raised / grouped surfaces.
 pub const SURFACE: Rgba = hex(0xffffff);
 /// Hover wash on interactive rows.
-pub const SURFACE_HOVER: Rgba = hex(0xf8f4ee);
+pub const SURFACE_HOVER: Rgba = hex(0xf0eae1);
+/// Selected row fill (distinct from hover).
+pub const SURFACE_SELECTED: Rgba = hex(0xf7f3ed);
 /// Pressed state.
-pub const SURFACE_ACTIVE: Rgba = hex(0xf4efe8);
+pub const SURFACE_ACTIVE: Rgba = hex(0xe8e1d7);
 /// Segmented control track / inset chrome.
 pub const TRACK: Rgba = hex(0xefe8df);
 /// Hairline borders.

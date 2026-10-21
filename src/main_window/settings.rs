@@ -3,7 +3,7 @@ use gpui::{Context, FontWeight, div, prelude::*, px};
 use crate::main_window::MainWindow;
 use crate::models::ModelOption;
 use crate::theme::{
-    BORDER, BORDER_STRONG, RADIUS_PX, RADIUS_SM_PX, SURFACE, SURFACE_ACTIVE, SURFACE_HOVER, TEXT,
+    BORDER, BORDER_STRONG, RADIUS_PX, RADIUS_SM_PX, SURFACE, SURFACE_ACTIVE, SURFACE_HOVER, SURFACE_SELECTED, TEXT,
     TEXT_MUTED, TRACK,
 };
 use crate::widgets::{primary_button, section_label, selection_dot};
@@ -75,7 +75,7 @@ impl MainWindow {
             .px(px(16.))
             .py(px(14.))
             .when(show_divider, |el| el.border_b_1().border_color(BORDER))
-            .when(selected, |el| el.bg(SURFACE_HOVER))
+            .when(selected, |el| el.bg(SURFACE_SELECTED))
             .hover(|s| s.bg(SURFACE_HOVER))
             .active(|s| s.bg(SURFACE_ACTIVE).opacity(0.95))
             .cursor_pointer()
