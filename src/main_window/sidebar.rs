@@ -54,7 +54,7 @@ impl MainWindow {
             .px(px(ITEM_PAD))
             .rounded(px(7.))
             .text_size(px(13.))
-            .font_weight(if selected { FontWeight::MEDIUM } else { FontWeight::NORMAL })
+            .font_weight(FontWeight::SEMIBOLD)
             .text_color(fg)
             .when(selected, |el| el.bg(t.nav_selected))
             .when(!selected, |el| el.hover(move |s| s.bg(t.nav_hover).text_color(t.text)))
