@@ -88,7 +88,7 @@ impl MainWindow {
             .font_weight(if selected { FontWeight::MEDIUM } else { FontWeight::NORMAL })
             .text_color(if selected { t.text } else { t.text_secondary })
             .when(selected, |el| el.bg(t.surface).shadow_sm())
-            .hover(move |s| if selected { s } else { s.bg(t.surface_hover).text_color(t.text) })
+            .hover(move |s| if selected { s } else { s.text_color(t.text) })
             .active(|s| s.opacity(0.85))
             .cursor_pointer()
             .child(label)
@@ -125,7 +125,7 @@ impl MainWindow {
             .py(px(14.))
             .when(show_divider, |el| el.border_b_1().border_color(t.border))
             .when(selected, |el| el.bg(t.surface_selected))
-            .hover(move |s| s.bg(t.surface_hover))
+            .when(!selected, |el| el.hover(move |s| s.bg(t.surface_hover)))
             .active(move |s| s.bg(t.surface_active))
             .cursor_pointer()
             .child(

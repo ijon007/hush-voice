@@ -86,6 +86,7 @@ impl Render for MainWindow {
                     .child(
                         div()
                             .id("main-content")
+                            .bg(t.panel)
                             .flex_1()
                             .h_full()
                             .px(px(36.))

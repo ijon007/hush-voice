@@ -26,28 +26,32 @@ pub enum ThemeMode {
 
 #[derive(Clone, Copy)]
 pub struct Theme {
-    /// App canvas.
+    /// Window background; the sidebar and title bar sit directly on it.
     pub bg: Rgba,
-    /// Sidebar rail.
-    pub sidebar: Rgba,
-    /// Raised / grouped surfaces (cards, lists).
+    /// Inset content panel.
+    pub panel: Rgba,
+    /// Grouped surfaces inside the panel (cards, lists).
     pub surface: Rgba,
-    /// Hover wash on interactive rows; clearly distinct from `bg` and `surface`.
+    /// Very subtle lift on hovered rows inside cards.
     pub surface_hover: Rgba,
-    /// Selected row fill; distinct from hover.
+    /// Selected row fill; clearly but softly distinct from hover.
     pub surface_selected: Rgba,
     /// Pressed state.
     pub surface_active: Rgba,
+    /// Subtle hover for sidebar items / chrome on `bg`.
+    pub nav_hover: Rgba,
+    /// Selected sidebar pill on `bg`.
+    pub nav_selected: Rgba,
     /// Segmented control track / inset chrome.
     pub track: Rgba,
     /// Hairline borders.
     pub border: Rgba,
-    /// Stronger edge for selected chrome / keycaps.
+    /// Stronger edge for keycaps / unselected controls.
     pub border_strong: Rgba,
     pub text: Rgba,
     pub text_secondary: Rgba,
     pub text_muted: Rgba,
-    /// Primary CTA fill and its label.
+    /// Primary CTA and selection controls (radio dots, toggles).
     pub primary: Rgba,
     pub primary_text: Rgba,
     pub primary_active: Rgba,
@@ -58,44 +62,52 @@ pub struct Theme {
     pub close_active: Rgba,
 }
 
+/// The app's "black": a warm near-black used as the dark base and as the
+/// primary / selection color in light mode.
+pub const INK: u32 = 0x141210;
+
 impl Theme {
     pub const LIGHT: Theme = Theme {
-        bg: hex(0xfaf6f0),
-        sidebar: hex(0xf3eee6),
+        bg: hex(0xf2eee8),
+        panel: hex(0xfbf9f6),
         surface: hex(0xffffff),
-        surface_hover: hex(0xf0eae1),
-        surface_selected: hex(0xf7f3ed),
-        surface_active: hex(0xe8e1d7),
-        track: hex(0xebe4da),
-        border: hex(0xe8e0d6),
-        border_strong: hex(0xd9cfc3),
-        text: hex(0x1d1d1f),
-        text_secondary: hex(0x6e6e73),
-        text_muted: hex(0x8e8e93),
-        primary: hex(0x1d1d1f),
+        surface_hover: hex(0xfcfaf7),
+        surface_selected: hex(0xf6f2ec),
+        surface_active: hex(0xf1ece5),
+        nav_hover: hex(0xf7f4ef),
+        nav_selected: hex(0xe6e1d9),
+        track: hex(0xefeae3),
+        border: hex(0xe7e1d8),
+        border_strong: hex(0xd6cec3),
+        text: hex(INK),
+        text_secondary: hex(0x6b655e),
+        text_muted: hex(0x8f8880),
+        primary: hex(INK),
         primary_text: hex(0xffffff),
-        primary_active: hex(0x3a3a3c),
+        primary_active: hex(0x2c2925),
         recording: hex(0xff3b30),
         close_hover: hex(0xc42b1c),
         close_active: hex(0xa52318),
     };
 
     pub const DARK: Theme = Theme {
-        bg: hex(0x161618),
-        sidebar: hex(0x1c1c1f),
-        surface: hex(0x202023),
-        surface_hover: hex(0x2f2f34),
-        surface_selected: hex(0x28282c),
-        surface_active: hex(0x38383e),
-        track: hex(0x2a2a2e),
-        border: hex(0x2e2e33),
-        border_strong: hex(0x46464d),
-        text: hex(0xf5f5f7),
-        text_secondary: hex(0xa1a1a6),
-        text_muted: hex(0x8a8a90),
-        primary: hex(0xf5f5f7),
-        primary_text: hex(0x1d1d1f),
-        primary_active: hex(0xd8d8dc),
+        bg: hex(INK),
+        panel: hex(0x1a1815),
+        surface: hex(0x201e1b),
+        surface_hover: hex(0x24221f),
+        surface_selected: hex(0x2a2724),
+        surface_active: hex(0x2e2b27),
+        nav_hover: hex(0x1b1916),
+        nav_selected: hex(0x262320),
+        track: hex(0x141210),
+        border: hex(0x2a2723),
+        border_strong: hex(0x3d3934),
+        text: hex(0xf2eee8),
+        text_secondary: hex(0xa8a199),
+        text_muted: hex(0x857e76),
+        primary: hex(0xf2eee8),
+        primary_text: hex(INK),
+        primary_active: hex(0xdcd6cd),
         recording: hex(0xff453a),
         close_hover: hex(0xc42b1c),
         close_active: hex(0xa52318),

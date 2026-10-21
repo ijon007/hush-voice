@@ -18,8 +18,8 @@ pub(crate) fn window_btn(
         .flex()
         .items_center()
         .justify_center()
-        .hover(move |s| if is_close { s.bg(t.close_hover) } else { s.bg(t.surface_hover) })
-        .active(move |s| if is_close { s.bg(t.close_active) } else { s.bg(t.surface_active) })
+        .hover(move |s| if is_close { s.bg(t.close_hover) } else { s.bg(t.nav_hover) })
+        .active(move |s| if is_close { s.bg(t.close_active) } else { s.bg(t.nav_selected) })
         .cursor_pointer()
         .child(
             div()

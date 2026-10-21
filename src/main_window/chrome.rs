@@ -14,7 +14,7 @@ impl MainWindow {
             .w_full()
             .h(px(36.))
             .flex_none()
-            .bg(t.sidebar)
+            .bg(t.bg)
             .border_b_1()
             .border_color(t.border)
             .child(
