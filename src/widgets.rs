@@ -122,6 +122,8 @@ fn history_row(t: Theme, index: usize, row: TranscriptRow, show_divider: bool) -
         .px(px(16.))
         .py(px(14.))
         .hover(move |s| s.bg(t.surface_hover))
+        .when(index == 0, |el| el.rounded_t(px(RADIUS_PX - 1.)))
+        .when(!show_divider, |el| el.rounded_b(px(RADIUS_PX - 1.)))
         .when(show_divider, |el| el.border_b_1().border_color(t.border))
         .child(
             div()

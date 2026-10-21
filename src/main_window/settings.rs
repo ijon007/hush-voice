@@ -123,6 +123,8 @@ impl MainWindow {
             .justify_between()
             .px(px(16.))
             .py(px(14.))
+            .when(index == 0, |el| el.rounded_t(px(RADIUS_PX - 1.)))
+            .when(!show_divider, |el| el.rounded_b(px(RADIUS_PX - 1.)))
             .when(show_divider, |el| el.border_b_1().border_color(t.border))
             .when(selected, |el| el.bg(t.surface_selected))
             .when(!selected, |el| el.hover(move |s| s.bg(t.surface_hover)))
