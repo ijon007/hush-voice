@@ -97,8 +97,6 @@ impl Render for MainWindow {
                                     .size_full()
                                     .rounded(px(12.))
                                     .bg(t.panel)
-                                    .border_1()
-                                    .border_color(t.border)
                                     .px(px(36.))
                                     .pt(px(28.))
                                     .pb(px(32.))
