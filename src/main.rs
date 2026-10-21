@@ -31,7 +31,7 @@ fn main() {
                 }),
                 is_resizable: false,
                 is_minimizable: true,
-                window_min_size: Some(size(px(680.), px(500.))),
+                window_min_size: Some(size(px(1042.), px(756.))),
                 ..Default::default()
             },
             |window, cx| cx.new(|cx| MainWindow::new(window, cx)),
