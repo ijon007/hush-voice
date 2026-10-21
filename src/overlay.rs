@@ -8,7 +8,7 @@ use gpui::{
     point, prelude::*, px, rgb, size,
 };
 
-use crate::theme::{RADIUS_PX, Theme};
+use crate::theme::Theme;
 
 use audio::MicMeter;
 
@@ -17,7 +17,9 @@ pub(crate) const PERSIST_OVERLAY: bool = false;
 
 /// Window includes padding so the pill’s soft shadow isn’t clipped by the region.
 const OVERLAY_WIDTH: f32 = 104.;
-const OVERLAY_HEIGHT: f32 = 56.;
+const OVERLAY_HEIGHT: f32 = 48.;
+/// Pill height (whole px; ~22% shorter than the old 36px).
+const PILL_H: f32 = 28.;
 const OVERLAY_BOTTOM_MARGIN: f32 = 48.;
 
 pub(crate) struct OverlayState {
@@ -47,7 +49,7 @@ const BAR_COUNT: usize = 7;
 const BAR_W: f32 = 2.;
 const BAR_GAP: f32 = 3.;
 const BAR_MIN: f32 = 2.;
-const BAR_MAX: f32 = 18.;
+const BAR_MAX: f32 = 14.;
 /// Level mapping in dBFS: the gate (and 0) at -50 dB, full height at -15 dB.
 const DB_FLOOR: f32 = -50.;
 const DB_CEIL: f32 = -15.;
@@ -163,10 +165,11 @@ impl Render for RecordingPill {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .gap(px(7.))
-                    .px(px(14.))
-                    .h(px(36.))
-                    .rounded(px(RADIUS_PX + 6.))
+                    .gap(px(6.))
+                    .px(px(12.))
+                    .h(px(PILL_H))
+                    // Full capsule: radius = height / 2.
+                    .rounded(px(PILL_H / 2.))
                     .overflow_hidden()
                     .bg(t.bg)
                     .border_1()
@@ -327,7 +330,7 @@ fn apply_overlay_dwm(_window: &Window) {
     }
 }
 
-/// Soft-round the HWND so transparent corners don’t read as a hard rectangle.
+/// Finish window setup once the HWND has a real size (DWM attrs + topmost).
 fn clip_overlay_to_capsule(_window: &Window) -> bool {
     #[cfg(not(windows))]
     {
@@ -338,7 +341,6 @@ fn clip_overlay_to_capsule(_window: &Window) -> bool {
     #[cfg(windows)]
     {
         use windows::Win32::Foundation::RECT;
-        use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
         use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
 
         apply_overlay_dwm(_window);
@@ -358,13 +360,10 @@ fn clip_overlay_to_capsule(_window: &Window) -> bool {
             return false;
         }
 
-        unsafe {
-            // Soft round — enough to hide corners; pill itself is rounded in GPUI.
-            let radius = height;
-            let region = CreateRoundRectRgn(0, 0, width, height, radius, radius);
-            SetWindowRgn(hwnd, Some(region), true);
-            raise_overlay_window(hwnd);
-        }
+        // No SetWindowRgn: GDI regions are aliased and were cutting the pill's
+        // anti-aliased edge and shadow into a jagged outline. The window is
+        // transparent, so GPUI's own AA rounding is all we need.
+        raise_overlay_window(hwnd);
         true
     }
 }
