@@ -303,14 +303,22 @@ fn apply_overlay_dwm(_window: &Window) {
     #[cfg(windows)]
     {
         use windows::Win32::Graphics::Dwm::{
-            DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
-            DwmSetWindowAttribute,
+            DWMNCRP_DISABLED, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_NCRENDERING_POLICY,
+            DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DwmSetWindowAttribute,
         };
 
         let Some(hwnd) = overlay_hwnd(_window) else {
             return;
         };
         unsafe {
+            strip_window_frame(hwnd);
+            let policy = DWMNCRP_DISABLED;
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_NCRENDERING_POLICY,
+                &policy as *const _ as _,
+                std::mem::size_of_val(&policy) as u32,
+            );
             let color = DWMWA_COLOR_NONE;
             let _ = DwmSetWindowAttribute(
                 hwnd,
@@ -327,6 +335,39 @@ fn apply_overlay_dwm(_window: &Window) {
             );
         }
         raise_overlay_window(hwnd);
+    }
+}
+
+/// GPUI gives the popup WS_CAPTION + WS_EX_WINDOWEDGE, which Windows draws as a
+/// hairline frame around the transparent pill window. Strip every frame bit.
+#[cfg(windows)]
+unsafe fn strip_window_frame(hwnd: windows::Win32::Foundation::HWND) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, GWL_STYLE, GetWindowLongPtrW, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
+        SWP_NOSIZE, SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos, WS_BORDER, WS_CAPTION,
+        WS_DLGFRAME, WS_EX_CLIENTEDGE, WS_EX_DLGMODALFRAME, WS_EX_STATICEDGE, WS_EX_WINDOWEDGE,
+        WS_THICKFRAME,
+    };
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+        let frame = (WS_CAPTION | WS_THICKFRAME | WS_BORDER | WS_DLGFRAME).0 as isize;
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let ex_frame =
+            (WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_DLGMODALFRAME | WS_EX_STATICEDGE).0 as isize;
+        if style & frame == 0 && ex & ex_frame == 0 {
+            return;
+        }
+        SetWindowLongPtrW(hwnd, GWL_STYLE, style & !frame);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex & !ex_frame);
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
     }
 }
 
