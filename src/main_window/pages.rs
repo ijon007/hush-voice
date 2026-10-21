@@ -186,7 +186,8 @@ impl MainWindow {
     }
 }
 
-/// One stat: icon tile on the left, number (+ inline unit) over a short label.
+/// One stat column: bare icon + label on top, big number (+ muted unit) below.
+/// Identical structure in every column so the baselines line up.
 fn stat_cell(
     t: Theme,
     icon: &'static str,
@@ -199,58 +200,50 @@ fn stat_cell(
         .flex_1()
         .min_w(px(0.))
         .flex()
-        .items_center()
-        .gap(px(12.))
-        .px(px(18.))
-        .py(px(16.))
+        .flex_col()
+        .gap(px(10.))
+        .px(px(20.))
+        .pt(px(16.))
+        .pb(px(18.))
         .when(divider, |el| el.border_l_1().border_color(t.border))
         .child(
             div()
-                .size(px(38.))
-                .flex_none()
                 .flex()
                 .items_center()
-                .justify_center()
-                .rounded(px(10.))
-                .bg(t.track)
-                .child(svg().path(icon).size(px(20.)).text_color(t.text_secondary)),
-        )
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .min_w(px(0.))
-                .gap(px(1.))
-                .child(
-                    div()
-                        .flex()
-                        .items_baseline()
-                        .gap(px(4.))
-                        .child(
-                            div()
-                                .text_size(px(26.))
-                                .line_height(px(30.))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(t.text)
-                                .child(value),
-                        )
-                        .when_some(unit, |el, unit| {
-                            el.child(
-                                div()
-                                    .text_size(px(13.))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(t.text_muted)
-                                    .child(unit),
-                            )
-                        }),
-                )
+                .gap(px(6.))
+                .h(px(16.))
+                .child(svg().path(icon).size(px(14.)).flex_none().text_color(t.text_muted))
                 .child(
                     div()
                         .text_size(px(12.))
+                        .font_weight(FontWeight::MEDIUM)
                         .text_color(t.text_muted)
                         .truncate()
                         .child(label),
                 ),
+        )
+        .child(
+            div()
+                .flex()
+                .items_baseline()
+                .gap(px(4.))
+                .h(px(34.))
+                .child(
+                    div()
+                        .text_size(px(30.))
+                        .line_height(px(34.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(t.text)
+                        .child(value),
+                )
+                .when_some(unit, |el, unit| {
+                    el.child(
+                        div()
+                            .text_size(px(14.))
+                            .text_color(t.text_muted)
+                            .child(unit),
+                    )
+                }),
         )
 }
 
