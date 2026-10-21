@@ -1,7 +1,7 @@
 use gpui::{Context, FontWeight, SharedString, div, prelude::*, px, svg};
 
 use crate::main_window::MainWindow;
-use crate::models::TranscriptRow;
+use crate::models::{TranscriptRow, compute_stats};
 use crate::theme::{RADIUS_PX, Theme, theme};
 use crate::widgets::{card, empty_state, section_label};
 
@@ -31,6 +31,7 @@ impl MainWindow {
         let t = theme(cx);
         page()
             .child(page_header(t, "Welcome back!", "Hold Ctrl + Space to dictate"))
+            .child(self.render_stats(t))
             .child(
                 div()
                     .flex()
@@ -124,7 +125,7 @@ impl MainWindow {
                             .text_color(t.text_muted)
                             .child(row.model.clone())
                             .child(div().text_color(t.border_strong).child("\u{00b7}"))
-                            .child(row.duration.clone()),
+                            .child(row.duration_label()),
                     ),
             )
             .child(
@@ -155,5 +156,54 @@ impl MainWindow {
                         this.copy_transcript(index, cx);
                     })),
             )
+    }
+}
+
+fn stat_card(t: Theme, icon: &'static str, value: String, label: &'static str) -> impl IntoElement {
+    card(t)
+        .flex_1()
+        .gap(px(14.))
+        .px(px(18.))
+        .py(px(16.))
+        .child(svg().path(icon).size(px(16.)).text_color(t.text_muted))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(2.))
+                .child(
+                    div()
+                        .text_size(px(26.))
+                        .line_height(px(30.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(t.text)
+                        .child(value),
+                )
+                .child(div().text_size(px(12.)).text_color(t.text_muted).child(label)),
+        )
+}
+
+fn group_thousands(n: usize) -> String {
+    let s = n.to_string();
+    let mut out = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+impl MainWindow {
+    fn render_stats(&self, t: Theme) -> impl IntoElement {
+        let stats = compute_stats(&self.history);
+        div()
+            .flex()
+            .gap(px(12.))
+            .pb(px(28.))
+            .child(stat_card(t, "icons/bolt.svg", stats.wpm.to_string(), "avg words per minute"))
+            .child(stat_card(t, "icons/text.svg", group_thousands(stats.total_words), "total words"))
+            .child(stat_card(t, "icons/flame.svg", stats.streak_days.to_string(), "day streak"))
     }
 }
