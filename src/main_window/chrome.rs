@@ -1,4 +1,4 @@
-use gpui::{Context, FontWeight, WindowControlArea, div, prelude::*, px};
+use gpui::{Context, FontWeight, WindowControlArea, div, prelude::*, px, svg};
 
 use crate::main_window::MainWindow;
 use crate::main_window::sidebar::{ITEM_PAD, SIDEBAR_PAD};
@@ -24,7 +24,17 @@ impl MainWindow {
                     .flex()
                     .items_center()
                     .pl(px(SIDEBAR_PAD + ITEM_PAD))
+                    .gap(px(7.))
                     .window_control_area(WindowControlArea::Drag)
+                    .child(
+                        // Waveform mark; GPUI svgs are alpha masks, so it tints with the theme.
+                        svg()
+                            .path("logo/mark.svg")
+                            .w(px(16.))
+                            .h(px(14.4))
+                            .flex_none()
+                            .text_color(t.text),
+                    )
                     .child(
                         div()
                             .text_size(px(13.))
