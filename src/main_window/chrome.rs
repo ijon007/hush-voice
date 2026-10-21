@@ -1,11 +1,12 @@
-use gpui::{FontWeight, WindowControlArea, div, prelude::*, px};
+use gpui::{Context, FontWeight, WindowControlArea, div, prelude::*, px};
 
 use crate::main_window::MainWindow;
-use crate::theme::{BG, BORDER, TEXT};
+use crate::theme::theme;
 use crate::widgets::window_btn;
 
 impl MainWindow {
-    pub(super) fn render_titlebar(&self) -> impl IntoElement {
+    pub(super) fn render_titlebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = theme(cx);
         div()
             .id("titlebar")
             .flex()
@@ -13,9 +14,9 @@ impl MainWindow {
             .w_full()
             .h(px(36.))
             .flex_none()
-            .bg(BG)
+            .bg(t.sidebar)
             .border_b_1()
-            .border_color(BORDER)
+            .border_color(t.border)
             .child(
                 div()
                     .id("titlebar-drag")
@@ -29,14 +30,14 @@ impl MainWindow {
                         div()
                             .text_size(px(13.))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(TEXT)
+                            .text_color(t.text)
                             .child("Hush"),
                     ),
             )
-            .child(window_btn("win-min", "\u{2014}", |window, _| {
+            .child(window_btn(t, "win-min", "\u{2014}", |window, _| {
                 window.minimize_window();
             }))
-            .child(window_btn("win-close", "\u{2715}", |window, _| {
+            .child(window_btn(t, "win-close", "\u{2715}", |window, _| {
                 window.remove_window();
             }))
     }

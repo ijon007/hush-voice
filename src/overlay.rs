@@ -6,7 +6,7 @@ use gpui::{
     point, prelude::*, px, size,
 };
 
-use crate::theme::{BORDER_STRONG, RADIUS_PX, RECORDING, SURFACE, TEXT};
+use crate::theme::{RADIUS_PX, theme};
 
 /// ponytail: true = pill stays up for screenshots (skips hide on key-up)
 pub(crate) const PERSIST_OVERLAY: bool = false;
@@ -29,7 +29,8 @@ pub(crate) struct RecordingPill {
 }
 
 impl Render for RecordingPill {
-    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = theme(cx);
         if !self.shaped {
             self.shaped = clip_overlay_to_capsule(window);
         }
@@ -50,9 +51,9 @@ impl Render for RecordingPill {
                     .h(px(36.))
                     .rounded(px(RADIUS_PX + 6.))
                     .overflow_hidden()
-                    .bg(SURFACE)
+                    .bg(t.surface)
                     .border_1()
-                    .border_color(BORDER_STRONG)
+                    .border_color(t.border_strong)
                     .shadow(vec![BoxShadow {
                         color: hsla(0.0, 0.0, 0.0, 0.12),
                         offset: point(px(0.), px(4.)),
@@ -63,7 +64,7 @@ impl Render for RecordingPill {
                         div()
                             .size(px(7.))
                             .rounded_full()
-                            .bg(RECORDING)
+                            .bg(t.recording)
                             .shadow(vec![BoxShadow {
                                 color: Hsla {
                                     h: 0.01,
@@ -80,7 +81,7 @@ impl Render for RecordingPill {
                         div()
                             .text_size(px(13.))
                             .font_weight(FontWeight::MEDIUM)
-                            .text_color(TEXT)
+                            .text_color(t.text)
                             .child("Listening"),
                     ),
             )

@@ -16,6 +16,7 @@ use overlay::{PERSIST_OVERLAY, show_overlay};
 
 fn main() {
     Application::new().run(|cx: &mut App| {
+        theme::init(cx);
         register_hotkey(cx);
 
         let bounds = Bounds::centered(None, size(px(1280.), px(720.)), cx);
@@ -32,7 +33,7 @@ fn main() {
                 window_min_size: Some(size(px(720.), px(520.))),
                 ..Default::default()
             },
-            |_, cx| cx.new(|_| MainWindow::new()),
+            |window, cx| cx.new(|cx| MainWindow::new(window, cx)),
         )
         .unwrap();
 

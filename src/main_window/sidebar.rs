@@ -1,11 +1,12 @@
-use gpui::{Context, FontWeight, div, prelude::*, px};
+use gpui::{Context, FontWeight, div, prelude::*, px, transparent_black};
 
 use crate::main_window::MainWindow;
 use crate::models::Page;
-use crate::theme::{BG, BORDER, RADIUS_SM_PX, SURFACE, SURFACE_HOVER, TEXT, TEXT_MUTED, TEXT_SECONDARY};
+use crate::theme::{RADIUS_SM_PX, Theme, theme};
 
 impl MainWindow {
     pub(super) fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = theme(cx);
         div()
             .flex()
             .flex_col()
@@ -16,9 +17,9 @@ impl MainWindow {
             .px(px(12.))
             .pt(px(16.))
             .pb(px(16.))
-            .bg(BG)
+            .bg(t.sidebar)
             .border_r_1()
-            .border_color(BORDER)
+            .border_color(t.border)
             .child(
                 div()
                     .flex()
@@ -30,17 +31,23 @@ impl MainWindow {
                             .pb(px(8.))
                             .text_size(px(11.))
                             .font_weight(FontWeight::MEDIUM)
-                            .text_color(TEXT_MUTED)
+                            .text_color(t.text_muted)
                             .child("MENU"),
                     )
-                    .child(self.nav_item("Home", Page::Home, cx))
-                    .child(self.nav_item("Dictionary", Page::Dictionary, cx))
-                    .child(self.nav_item("Shortcuts", Page::Shortcuts, cx)),
+                    .child(self.nav_item(t, "Home", Page::Home, cx))
+                    .child(self.nav_item(t, "Dictionary", Page::Dictionary, cx))
+                    .child(self.nav_item(t, "Shortcuts", Page::Shortcuts, cx)),
             )
-            .child(self.nav_item("Settings", Page::Settings, cx))
+            .child(self.nav_item(t, "Settings", Page::Settings, cx))
     }
 
-    fn nav_item(&self, label: &'static str, page: Page, cx: &mut Context<Self>) -> impl IntoElement {
+    fn nav_item(
+        &self,
+        t: Theme,
+        label: &'static str,
+        page: Page,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let selected = self.page == page;
         div()
             .id(label)
@@ -49,12 +56,13 @@ impl MainWindow {
             .h(px(34.))
             .px(px(12.))
             .rounded(px(RADIUS_SM_PX))
+            .border_1()
             .text_size(px(13.))
             .font_weight(if selected { FontWeight::MEDIUM } else { FontWeight::NORMAL })
-            .text_color(if selected { TEXT } else { TEXT_SECONDARY })
-            .when(selected, |el| el.bg(SURFACE).border_1().border_color(BORDER).shadow_sm())
-            .when(!selected, |el| el.border_1().border_color(gpui::transparent_black()))
-            .hover(move |s| if selected { s } else { s.bg(SURFACE_HOVER).text_color(TEXT) })
+            .text_color(if selected { t.text } else { t.text_secondary })
+            .when(selected, |el| el.bg(t.surface).border_color(t.border).shadow_sm())
+            .when(!selected, |el| el.border_color(transparent_black()))
+            .hover(move |s| if selected { s } else { s.bg(t.surface_hover).text_color(t.text) })
             .active(|s| s.opacity(0.85))
             .cursor_pointer()
             .child(label)

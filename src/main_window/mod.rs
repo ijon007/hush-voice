@@ -1,13 +1,12 @@
 mod chrome;
-mod history;
 mod pages;
 mod settings;
 mod sidebar;
 
-use gpui::{Context, SharedString, Window, div, prelude::*, px};
+use gpui::{Context, SharedString, Subscription, Window, div, prelude::*, px};
 
 use crate::models::{ModelOption, Page, TranscriptRow, sample_history};
-use crate::theme::{BG, TEXT};
+use crate::theme::theme;
 
 pub(crate) struct MainWindow {
     page: Page,
@@ -15,10 +14,13 @@ pub(crate) struct MainWindow {
     active_model: usize,
     hotkey: SharedString,
     history: Vec<TranscriptRow>,
+    _appearance: Subscription,
 }
 
 impl MainWindow {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // Re-render when Windows switches light/dark (used by the System option).
+        let appearance = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
         Self {
             page: Page::Home,
             models: vec![
@@ -41,6 +43,7 @@ impl MainWindow {
             active_model: 0,
             hotkey: "Ctrl + Space".into(),
             history: sample_history(),
+            _appearance: appearance,
         }
     }
 
@@ -57,21 +60,22 @@ impl MainWindow {
 
 impl Render for MainWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = theme(cx);
         let content = match self.page {
-            Page::Home => self.render_home().into_any_element(),
+            Page::Home => self.render_home(cx).into_any_element(),
             Page::Settings => self.render_settings_page(cx).into_any_element(),
-            Page::Dictionary => self.render_dictionary().into_any_element(),
-            Page::Shortcuts => self.render_shortcuts().into_any_element(),
+            Page::Dictionary => self.render_dictionary(cx).into_any_element(),
+            Page::Shortcuts => self.render_shortcuts(cx).into_any_element(),
         };
 
         div()
             .flex()
             .flex_col()
             .size_full()
-            .bg(BG)
-            .text_color(TEXT)
+            .bg(t.bg)
+            .text_color(t.text)
             .font_family(".SystemUIFont")
-            .child(self.render_titlebar())
+            .child(self.render_titlebar(cx))
             .child(
                 div()
                     .flex()
