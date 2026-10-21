@@ -3,7 +3,7 @@ mod audio;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    App, Bounds, BoxShadow, Context, FontWeight, Global, Timer, Window,
+    App, Bounds, BoxShadow, Context, Global, Timer, Window,
     WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div, hsla,
     point, prelude::*, px, rgb, size,
 };
@@ -16,89 +16,123 @@ use audio::MicMeter;
 pub(crate) const PERSIST_OVERLAY: bool = false;
 
 /// Window includes padding so the pill’s soft shadow isn’t clipped by the region.
-const OVERLAY_WIDTH: f32 = 168.;
+const OVERLAY_WIDTH: f32 = 104.;
 const OVERLAY_HEIGHT: f32 = 56.;
 const OVERLAY_BOTTOM_MARGIN: f32 = 48.;
 
 pub(crate) struct OverlayState {
     pub handle: Option<WindowHandle<RecordingPill>>,
-    /// Sticky when opened via Ctrl+Alt+Space toggle; push-to-talk release won't dismiss it.
-    pub sticky: bool,
+    /// Locked via Ctrl+Win+Alt: releasing the hold shortcut won't dismiss it.
+    pub locked: bool,
 }
 
 impl Global for OverlayState {}
 
 pub(crate) struct RecordingPill {
     shaped: bool,
-    /// Live mic level; `None` if no mic / permission denied (static mark).
+    /// Shows the lock glyph (Ctrl+Win+Alt mode).
+    locked: bool,
+    /// Live mic level; `None` if no mic / permission denied (flat bars).
     meter: Option<MicMeter>,
-    /// Smoothed level (fast attack, slow release).
-    level: f32,
+    /// Per-bar smoothed heights 0..1 (fast attack, slow release).
+    bars: [f32; BAR_COUNT],
+    /// Per-bar random weights, re-rolled every ~90ms for natural motion.
+    weights: [f32; BAR_COUNT],
+    rng: u32,
     last_frame: Instant,
-    started: Instant,
+    last_roll: Instant,
 }
 
+const BAR_COUNT: usize = 5;
+const BAR_W: f32 = 3.;
+const BAR_GAP: f32 = 3.;
+const BAR_MIN: f32 = 3.;
+const BAR_MAX: f32 = 18.;
+/// RMS below this is treated as silence (room hiss stays flat).
+const NOISE_GATE: f32 = 0.015;
+
 impl RecordingPill {
-    fn new() -> Self {
+    fn new(locked: bool) -> Self {
         let now = Instant::now();
-        Self { shaped: false, meter: MicMeter::start(), level: 0., last_frame: now, started: now }
+        Self {
+            shaped: false,
+            locked,
+            meter: MicMeter::start(),
+            bars: [0.; BAR_COUNT],
+            weights: [1.; BAR_COUNT],
+            rng: 0x9e37_79b9,
+            last_frame: now,
+            last_roll: now,
+        }
     }
 
-    /// Advance the smoothed level by one frame.
+    fn rand(&mut self) -> f32 {
+        // xorshift32: cheap per-bar jitter, no extra crate.
+        let mut x = self.rng;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        self.rng = x;
+        (x >> 8) as f32 / (1u32 << 24) as f32
+    }
+
+    /// Advance the bar heights by one frame.
     fn tick(&mut self) {
         let now = Instant::now();
         let dt = (now - self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
-        let target = self
-            .meter
-            .as_ref()
-            .map(|m| (m.level() * 9.).sqrt().clamp(0., 1.))
-            .unwrap_or(0.);
-        let tau = if target > self.level { 0.05 } else { 0.18 };
-        self.level += (target - self.level) * (1. - (-dt / tau).exp());
+        if (now - self.last_roll).as_millis() >= 90 {
+            self.last_roll = now;
+            for i in 0..BAR_COUNT {
+                self.weights[i] = 0.45 + 0.55 * self.rand();
+            }
+        }
+        let rms = self.meter.as_ref().map(|m| m.level()).unwrap_or(0.);
+        let level = ((rms - NOISE_GATE).max(0.) * 14.).sqrt().clamp(0., 1.);
+        for i in 0..BAR_COUNT {
+            // Middle bars reach a little higher.
+            let center = 1. - (i as f32 - (BAR_COUNT as f32 - 1.) / 2.).abs() * 0.12;
+            let target = (level * self.weights[i] * center).min(1.);
+            let tau = if target > self.bars[i] { 0.05 } else { 0.18 };
+            self.bars[i] += (target - self.bars[i]) * (1. - (-dt / tau).exp());
+        }
     }
 }
 
-/// Logo strokes in its 552x496 viewBox: (x, y1, y2), stroke width 44.
-const BARS: [(f32, f32, f32); 9] = [
-    (22., 219.75, 276.25),
-    (106.667, 304.5, 361.),
-    (106.667, 135., 191.5),
-    (191.333, 191.5, 304.5),
-    (276., 106.75, 389.25),
-    (360.667, 248., 474.),
-    (360.667, 22., 135.),
-    (445.333, 163.25, 332.75),
-    (530., 219.75, 276.25),
-];
-/// Per-bar gain / wobble so the motion isn't uniform.
-const GAIN: [f32; 9] = [1.6, 0.9, 0.9, 1.3, 0.8, 0.6, 0.6, 1.2, 1.7];
-const MARK_W: f32 = 20.;
-const STROKE: f32 = 44.;
-
-fn waveform(level: f32, time: f32, color: gpui::Rgba) -> impl IntoElement {
-    let k = MARK_W / 552.;
+/// Voice meter: equal-width rounded bars, flat dots in silence.
+fn meter_bars(bars: &[f32; BAR_COUNT], color: gpui::Rgba) -> impl IntoElement {
     div()
-        .relative()
-        .flex_none()
-        .w(px(MARK_W))
-        .h(px(496. * k))
-        .children(BARS.iter().enumerate().map(|(i, &(x, y1, y2))| {
-            let wobble = 0.75 + 0.25 * (time * (7. + i as f32 * 1.3) + i as f32 * 1.7).sin();
-            let rest = y2 - y1;
-            // Grow around the stroke's own center; cap the extra length.
-            let len = rest + (level * GAIN[i] * wobble * 150.).min(180.);
-            let cy = (y1 + y2) / 2.;
-            let h = (len + STROKE) * k;
+        .flex()
+        .items_center()
+        .gap(px(BAR_GAP))
+        .h(px(BAR_MAX))
+        .children(bars.iter().map(move |&v| {
             div()
-                .absolute()
-                .left(px((x - STROKE / 2.) * k))
-                .top(px(cy * k - h / 2.))
-                .w(px(STROKE * k))
-                .h(px(h))
+                .w(px(BAR_W))
+                .h(px(BAR_MIN + (BAR_MAX - BAR_MIN) * v))
                 .rounded_full()
                 .bg(color)
         }))
+}
+
+/// Small filled padlock (shackle + body) for locked mode.
+fn lock_glyph(color: gpui::Rgba) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_col()
+        .items_center()
+        .flex_none()
+        .child(
+            div()
+                .w(px(6.))
+                .h(px(5.))
+                .border_t(px(1.6))
+                .border_l(px(1.6))
+                .border_r(px(1.6))
+                .border_color(color)
+                .rounded_t(px(3.)),
+        )
+        .child(div().w(px(10.)).h(px(7.)).rounded(px(2.)).bg(color))
 }
 
 impl Render for RecordingPill {
@@ -108,7 +142,6 @@ impl Render for RecordingPill {
             self.tick();
             window.request_animation_frame();
         }
-        let time = self.started.elapsed().as_secs_f32();
         // Always dark, regardless of the app theme.
         let t = Theme::DARK;
         let cream = rgb(0xfaf6f0);
@@ -127,8 +160,8 @@ impl Render for RecordingPill {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .gap(px(8.))
-                    .px(px(16.))
+                    .gap(px(7.))
+                    .px(px(14.))
                     .h(px(36.))
                     .rounded(px(RADIUS_PX + 6.))
                     .overflow_hidden()
@@ -141,14 +174,8 @@ impl Render for RecordingPill {
                         blur_radius: px(16.),
                         spread_radius: px(0.),
                     }])
-                    .child(waveform(self.level, time, cream))
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(cream)
-                            .child("Listening"),
-                    ),
+                    .when(self.locked, |el| el.child(lock_glyph(cream)))
+                    .child(meter_bars(&self.bars, cream)),
             )
     }
 }
@@ -169,7 +196,12 @@ fn overlay_bounds(cx: &App) -> Bounds<gpui::Pixels> {
     }
 }
 
+/// Hold-to-dictate: show the pill (no-op if already up).
 pub(crate) fn show_overlay(cx: &mut App) {
+    open_overlay(cx, false);
+}
+
+fn open_overlay(cx: &mut App, locked: bool) {
     if cx.global::<OverlayState>().handle.is_some() {
         return;
     }
@@ -190,7 +222,7 @@ pub(crate) fn show_overlay(cx: &mut App) {
             },
             |window, cx| {
                 apply_overlay_dwm(window);
-                cx.new(|_| RecordingPill::new())
+                cx.new(|_| RecordingPill::new(locked))
             },
         )
         .ok();
@@ -216,32 +248,43 @@ pub(crate) fn show_overlay(cx: &mut App) {
         .detach();
     }
 
-    cx.global_mut::<OverlayState>().handle = handle;
+    let state = cx.global_mut::<OverlayState>();
+    state.handle = handle;
+    state.locked = locked;
 }
 
+/// Hold released: hide unless locked.
 pub(crate) fn hide_overlay(cx: &mut App) {
-    if PERSIST_OVERLAY {
-        return;
-    }
-    if cx.global::<OverlayState>().sticky {
+    if PERSIST_OVERLAY || cx.global::<OverlayState>().locked {
         return;
     }
     force_hide_overlay(cx);
 }
 
-pub(crate) fn toggle_overlay(cx: &mut App) {
-    if cx.global::<OverlayState>().handle.is_some() {
-        cx.global_mut::<OverlayState>().sticky = false;
-        force_hide_overlay(cx);
-        return;
+pub(crate) fn overlay_visible_unlocked(cx: &App) -> bool {
+    let s = cx.global::<OverlayState>();
+    s.handle.is_some() && !s.locked
+}
+
+/// Ctrl+Win+Alt: lock on (opening or upgrading a held pill), or off.
+pub(crate) fn toggle_lock(cx: &mut App) {
+    let state = cx.global::<OverlayState>();
+    match (state.handle.clone(), state.locked) {
+        (Some(_), true) => force_hide_overlay(cx),
+        (Some(handle), false) => {
+            cx.global_mut::<OverlayState>().locked = true;
+            let _ = handle.update(cx, |pill, _, cx| {
+                pill.locked = true;
+                cx.notify();
+            });
+        }
+        (None, _) => open_overlay(cx, true),
     }
-    cx.global_mut::<OverlayState>().sticky = true;
-    show_overlay(cx);
 }
 
 fn force_hide_overlay(cx: &mut App) {
+    cx.global_mut::<OverlayState>().locked = false;
     if let Some(handle) = cx.global_mut::<OverlayState>().handle.take() {
-        cx.global_mut::<OverlayState>().sticky = false;
         let _ = handle.update(cx, |pill, window, _| {
             // Release the mic before the window goes away.
             pill.meter = None;
@@ -308,7 +351,7 @@ fn clip_overlay_to_capsule(_window: &Window) -> bool {
 
         let width = rect.right - rect.left;
         let height = rect.bottom - rect.top;
-        if width < 100 || height < 40 {
+        if width < 40 || height < 40 {
             return false;
         }
 
