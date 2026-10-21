@@ -1,12 +1,16 @@
-use std::time::Duration;
+mod audio;
+
+use std::time::{Duration, Instant};
 
 use gpui::{
     App, Bounds, BoxShadow, Context, FontWeight, Global, Timer, Window,
     WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div, hsla,
-    point, prelude::*, px, rgb, size, svg,
+    point, prelude::*, px, rgb, size,
 };
 
 use crate::theme::{RADIUS_PX, Theme};
+
+use audio::MicMeter;
 
 /// ponytail: true = pill stays up for screenshots (skips hide on key-up)
 pub(crate) const PERSIST_OVERLAY: bool = false;
@@ -26,10 +30,85 @@ impl Global for OverlayState {}
 
 pub(crate) struct RecordingPill {
     shaped: bool,
+    /// Live mic level; `None` if no mic / permission denied (static mark).
+    meter: Option<MicMeter>,
+    /// Smoothed level (fast attack, slow release).
+    level: f32,
+    last_frame: Instant,
+    started: Instant,
+}
+
+impl RecordingPill {
+    fn new() -> Self {
+        let now = Instant::now();
+        Self { shaped: false, meter: MicMeter::start(), level: 0., last_frame: now, started: now }
+    }
+
+    /// Advance the smoothed level by one frame.
+    fn tick(&mut self) {
+        let now = Instant::now();
+        let dt = (now - self.last_frame).as_secs_f32().min(0.1);
+        self.last_frame = now;
+        let target = self
+            .meter
+            .as_ref()
+            .map(|m| (m.level() * 9.).sqrt().clamp(0., 1.))
+            .unwrap_or(0.);
+        let tau = if target > self.level { 0.05 } else { 0.18 };
+        self.level += (target - self.level) * (1. - (-dt / tau).exp());
+    }
+}
+
+/// Logo strokes in its 552x496 viewBox: (x, y1, y2), stroke width 44.
+const BARS: [(f32, f32, f32); 9] = [
+    (22., 219.75, 276.25),
+    (106.667, 304.5, 361.),
+    (106.667, 135., 191.5),
+    (191.333, 191.5, 304.5),
+    (276., 106.75, 389.25),
+    (360.667, 248., 474.),
+    (360.667, 22., 135.),
+    (445.333, 163.25, 332.75),
+    (530., 219.75, 276.25),
+];
+/// Per-bar gain / wobble so the motion isn't uniform.
+const GAIN: [f32; 9] = [1.6, 0.9, 0.9, 1.3, 0.8, 0.6, 0.6, 1.2, 1.7];
+const MARK_W: f32 = 20.;
+const STROKE: f32 = 44.;
+
+fn waveform(level: f32, time: f32, color: gpui::Rgba) -> impl IntoElement {
+    let k = MARK_W / 552.;
+    div()
+        .relative()
+        .flex_none()
+        .w(px(MARK_W))
+        .h(px(496. * k))
+        .children(BARS.iter().enumerate().map(|(i, &(x, y1, y2))| {
+            let wobble = 0.75 + 0.25 * (time * (7. + i as f32 * 1.3) + i as f32 * 1.7).sin();
+            let rest = y2 - y1;
+            // Grow around the stroke's own center; cap the extra length.
+            let len = rest + (level * GAIN[i] * wobble * 150.).min(180.);
+            let cy = (y1 + y2) / 2.;
+            let h = (len + STROKE) * k;
+            div()
+                .absolute()
+                .left(px((x - STROKE / 2.) * k))
+                .top(px(cy * k - h / 2.))
+                .w(px(STROKE * k))
+                .h(px(h))
+                .rounded_full()
+                .bg(color)
+        }))
 }
 
 impl Render for RecordingPill {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        // Redraw every frame only while a mic is live (window exists = visible).
+        if self.meter.is_some() {
+            self.tick();
+            window.request_animation_frame();
+        }
+        let time = self.started.elapsed().as_secs_f32();
         // Always dark, regardless of the app theme.
         let t = Theme::DARK;
         let cream = rgb(0xfaf6f0);
@@ -62,15 +141,7 @@ impl Render for RecordingPill {
                         blur_radius: px(16.),
                         spread_radius: px(0.),
                     }])
-                    .child(
-                        // Waveform mark (alpha mask) tinted with the pill's text color.
-                        svg()
-                            .path("logo/mark.svg")
-                            .w(px(16.))
-                            .h(px(14.4))
-                            .flex_none()
-                            .text_color(cream),
-                    )
+                    .child(waveform(self.level, time, cream))
                     .child(
                         div()
                             .text_size(px(13.))
@@ -119,7 +190,7 @@ pub(crate) fn show_overlay(cx: &mut App) {
             },
             |window, cx| {
                 apply_overlay_dwm(window);
-                cx.new(|_| RecordingPill { shaped: false })
+                cx.new(|_| RecordingPill::new())
             },
         )
         .ok();
