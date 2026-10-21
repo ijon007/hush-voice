@@ -119,8 +119,8 @@ impl Render for MainWindow {
                                     .size_full()
                                     .rounded(px(12.))
                                     .bg(t.panel)
-                                    .px(px(36.))
-                                    .pt(px(28.))
+                                    .px(px(28.))
+                                    .pt(px(24.))
                                     .pb(px(32.))
                                     .overflow_y_scroll()
                                     .child(content),

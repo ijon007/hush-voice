@@ -16,7 +16,7 @@ impl MainWindow {
             .flex()
             .flex_col()
             .justify_between()
-            .w(px(212.))
+            .w(px(192.))
             .h_full()
             .flex_none()
             .px(px(SIDEBAR_PAD))

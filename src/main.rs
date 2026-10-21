@@ -20,7 +20,7 @@ fn main() {
         theme::init(cx);
         register_hotkey(cx);
 
-        let bounds = Bounds::centered(None, size(px(1280.), px(720.)), cx);
+        let bounds = Bounds::centered(None, size(px(820.), px(600.)), cx);
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -31,7 +31,7 @@ fn main() {
                 }),
                 is_resizable: false,
                 is_minimizable: true,
-                window_min_size: Some(size(px(720.), px(520.))),
+                window_min_size: Some(size(px(680.), px(500.))),
                 ..Default::default()
             },
             |window, cx| cx.new(|cx| MainWindow::new(window, cx)),
