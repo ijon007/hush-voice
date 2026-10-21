@@ -50,7 +50,7 @@ impl MainWindow {
             .flex()
             .items_center()
             .gap(px(8.))
-            .h(px(31.))
+            .h(px(37.))
             .px(px(ITEM_PAD))
             .rounded(px(7.))
             .text_size(px(13.))
