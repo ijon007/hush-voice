@@ -98,6 +98,65 @@ pub(crate) fn compute_stats(rows: &[TranscriptRow]) -> Stats {
     Stats { wpm, total_words, streak_days }
 }
 
+/// A spoken word (or phrase) rewritten before the transcript is committed.
+/// Saying `trigger` inserts `expansion` instead.
+#[derive(Clone)]
+pub(crate) struct Shortcut {
+    pub trigger: SharedString,
+    pub expansion: SharedString,
+}
+
+impl Shortcut {
+    pub(crate) fn new(trigger: impl Into<SharedString>, expansion: impl Into<SharedString>) -> Self {
+        Self { trigger: trigger.into(), expansion: expansion.into() }
+    }
+}
+
+/// Replace shortcut triggers in `text` with their expansions.
+/// Match is case-insensitive and only on a whole word or phrase, so "email"
+/// rewrites "send email." and leaves "emailing" alone. Longer triggers win.
+pub(crate) fn apply_shortcuts(text: &str, shortcuts: &[Shortcut]) -> String {
+    let mut rules: Vec<&Shortcut> = shortcuts.iter().filter(|s| !s.trigger.is_empty()).collect();
+    rules.sort_by_key(|s| std::cmp::Reverse(s.trigger.chars().count()));
+
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let at_boundary = i == 0 || !is_shortcut_word(chars[i - 1]);
+        if at_boundary
+            && let Some(rule) = rules.iter().find(|rule| trigger_matches(&chars, i, &rule.trigger))
+        {
+            out.push_str(&rule.expansion);
+            i += rule.trigger.chars().count();
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+fn is_shortcut_word(c: char) -> bool {
+    c.is_alphanumeric() || c == '\'' || c == '-' || c == '_'
+}
+
+fn trigger_matches(chars: &[char], start: usize, trigger: &str) -> bool {
+    let mut n = 0;
+    for (k, ch) in trigger.chars().enumerate() {
+        let Some(got) = chars.get(start + k) else { return false };
+        if !got.eq_ignore_ascii_case(&ch) {
+            return false;
+        }
+        n = k + 1;
+    }
+    if n == 0 {
+        return false;
+    }
+    let end = start + n;
+    end == chars.len() || !is_shortcut_word(chars[end])
+}
+
 pub(crate) fn sample_history() -> Vec<TranscriptRow> {
     let d = today();
     let mut rows = vec![
@@ -116,4 +175,32 @@ pub(crate) fn sample_history() -> Vec<TranscriptRow> {
     ];
     rows.extend(older.into_iter().map(|(t, m, s, day)| TranscriptRow::on_day(t, m, s, day)));
     rows
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn email_shortcut_replaces_the_spoken_word() {
+        let shortcuts = [Shortcut::new("email", "ada@example.com")];
+        assert_eq!(
+            apply_shortcuts("Send it to email today.", &shortcuts),
+            "Send it to ada@example.com today."
+        );
+        assert_eq!(apply_shortcuts("Email me", &shortcuts), "ada@example.com me");
+        assert_eq!(apply_shortcuts("emailing the list", &shortcuts), "emailing the list");
+    }
+
+    #[test]
+    fn longer_phrase_wins() {
+        let shortcuts = [
+            Shortcut::new("email", "ada@example.com"),
+            Shortcut::new("work email", "ada@studio.com"),
+        ];
+        assert_eq!(
+            apply_shortcuts("my work email is on file", &shortcuts),
+            "my ada@studio.com is on file"
+        );
+    }
 }

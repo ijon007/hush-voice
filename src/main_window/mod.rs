@@ -1,16 +1,18 @@
 mod chrome;
+mod dictionary;
 mod pages;
 mod settings;
+mod shortcuts;
 mod sidebar;
 
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, ClipboardItem, Context, SharedString, Subscription, Timer, Window, div,
-    ease_out_quint, prelude::*, px,
+    Animation, AnimationExt, ClipboardItem, Context, FocusHandle, SharedString, Subscription, Timer,
+    Window, div, ease_out_quint, prelude::*, px,
 };
 
-use crate::models::{ModelOption, Page, TranscriptRow, sample_history};
+use crate::models::{ModelOption, Page, Shortcut, TranscriptRow, sample_history};
 use crate::theme::theme;
 
 pub(crate) struct MainWindow {
@@ -29,6 +31,39 @@ pub(crate) struct MainWindow {
     nav_count: usize,
     /// Bumped when the selected model changes so the radio dot scales in.
     dot_nonce: usize,
+    shortcuts: Vec<Shortcut>,
+    shortcut_query: String,
+    /// Next typed character replaces the shortcut search field (Ctrl+A).
+    shortcut_replace: bool,
+    shortcut_focus: FocusHandle,
+    /// Trigger that just landed in the grid, so its card can rise in once.
+    shortcut_added: Option<String>,
+    shortcut_nonce: usize,
+    shortcut_dialog: bool,
+    dialog_closing: bool,
+    dialog_epoch: usize,
+    dialog_nonce: usize,
+    dialog_word: String,
+    dialog_shortcut: String,
+    dialog_replace: bool,
+    word_focus: FocusHandle,
+    dialog_shortcut_focus: FocusHandle,
+    /// Custom spellings. Speech models read the saved list when a token is uncertain.
+    words: Vec<String>,
+    dict_query: String,
+    /// Next typed character replaces the dictionary query (Ctrl+A).
+    dict_replace: bool,
+    dict_focus: FocusHandle,
+    /// Word that just landed in the grid, so its card can rise in once.
+    just_added: Option<String>,
+    dict_nonce: usize,
+    dict_dialog: bool,
+    dict_dialog_closing: bool,
+    dict_dialog_epoch: usize,
+    dict_dialog_nonce: usize,
+    dict_draft: String,
+    dict_dialog_replace: bool,
+    dict_word_focus: FocusHandle,
     _appearance: Subscription,
 }
 
@@ -63,6 +98,34 @@ impl MainWindow {
             copy_nonce: 0,
             nav_count: 0,
             dot_nonce: 0,
+            shortcuts: shortcuts::load_shortcuts(),
+            shortcut_query: String::new(),
+            shortcut_replace: false,
+            shortcut_focus: cx.focus_handle(),
+            shortcut_added: None,
+            shortcut_nonce: 0,
+            shortcut_dialog: false,
+            dialog_closing: false,
+            dialog_epoch: 0,
+            dialog_nonce: 0,
+            dialog_word: String::new(),
+            dialog_shortcut: String::new(),
+            dialog_replace: false,
+            word_focus: cx.focus_handle(),
+            dialog_shortcut_focus: cx.focus_handle(),
+            words: dictionary::load_words(),
+            dict_query: String::new(),
+            dict_replace: false,
+            dict_focus: cx.focus_handle(),
+            just_added: None,
+            dict_nonce: 0,
+            dict_dialog: false,
+            dict_dialog_closing: false,
+            dict_dialog_epoch: 0,
+            dict_dialog_nonce: 0,
+            dict_draft: String::new(),
+            dict_dialog_replace: false,
+            dict_word_focus: cx.focus_handle(),
             _appearance: appearance,
         }
     }
@@ -113,8 +176,8 @@ impl Render for MainWindow {
         let content = match self.page {
             Page::Home => self.render_home(cx).into_any_element(),
             Page::Settings => self.render_settings_page(cx).into_any_element(),
-            Page::Dictionary => self.render_dictionary(cx).into_any_element(),
-            Page::Shortcuts => self.render_shortcuts(cx).into_any_element(),
+            Page::Dictionary => self.render_dictionary(window, cx).into_any_element(),
+            Page::Shortcuts => self.render_shortcuts(window, cx).into_any_element(),
         };
         // Page switch: short fade + 6px rise. Skipped on first show, where the
         // Home cards/rows run their own staggered entrance instead.
@@ -169,5 +232,7 @@ impl Render for MainWindow {
                             ),
                     ),
             )
+            .when(self.shortcut_dialog, |el| el.child(self.shortcut_dialog(t, window, cx)))
+            .when(self.dict_dialog, |el| el.child(self.dict_dialog(t, window, cx)))
     }
 }
