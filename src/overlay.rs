@@ -3,10 +3,10 @@ use std::time::Duration;
 use gpui::{
     App, Bounds, BoxShadow, Context, FontWeight, Global, Timer, Window,
     WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div, hsla,
-    point, prelude::*, px, size, svg,
+    point, prelude::*, px, rgb, size, svg,
 };
 
-use crate::theme::{RADIUS_PX, theme};
+use crate::theme::{RADIUS_PX, Theme};
 
 /// ponytail: true = pill stays up for screenshots (skips hide on key-up)
 pub(crate) const PERSIST_OVERLAY: bool = false;
@@ -29,8 +29,10 @@ pub(crate) struct RecordingPill {
 }
 
 impl Render for RecordingPill {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let t = theme(cx);
+    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        // Always dark, regardless of the app theme.
+        let t = Theme::DARK;
+        let cream = rgb(0xfaf6f0);
         if !self.shaped {
             self.shaped = clip_overlay_to_capsule(window);
         }
@@ -51,11 +53,11 @@ impl Render for RecordingPill {
                     .h(px(36.))
                     .rounded(px(RADIUS_PX + 6.))
                     .overflow_hidden()
-                    .bg(t.surface)
+                    .bg(t.bg)
                     .border_1()
                     .border_color(t.border_strong)
                     .shadow(vec![BoxShadow {
-                        color: hsla(0.0, 0.0, 0.0, 0.12),
+                        color: hsla(0.0, 0.0, 0.0, 0.28),
                         offset: point(px(0.), px(4.)),
                         blur_radius: px(16.),
                         spread_radius: px(0.),
@@ -67,13 +69,13 @@ impl Render for RecordingPill {
                             .w(px(16.))
                             .h(px(14.4))
                             .flex_none()
-                            .text_color(t.text),
+                            .text_color(cream),
                     )
                     .child(
                         div()
                             .text_size(px(13.))
                             .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.text)
+                            .text_color(cream)
                             .child("Listening"),
                     ),
             )
