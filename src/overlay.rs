@@ -43,13 +43,14 @@ pub(crate) struct RecordingPill {
     last_roll: Instant,
 }
 
-const BAR_COUNT: usize = 5;
-const BAR_W: f32 = 3.;
+const BAR_COUNT: usize = 7;
+const BAR_W: f32 = 2.;
 const BAR_GAP: f32 = 3.;
-const BAR_MIN: f32 = 3.;
+const BAR_MIN: f32 = 2.;
 const BAR_MAX: f32 = 18.;
-/// RMS below this is treated as silence (room hiss stays flat).
-const NOISE_GATE: f32 = 0.015;
+/// Level mapping in dBFS: the gate (and 0) at -50 dB, full height at -15 dB.
+const DB_FLOOR: f32 = -50.;
+const DB_CEIL: f32 = -15.;
 
 impl RecordingPill {
     fn new(locked: bool) -> Self {
@@ -88,7 +89,9 @@ impl RecordingPill {
             }
         }
         let rms = self.meter.as_ref().map(|m| m.level()).unwrap_or(0.);
-        let level = ((rms - NOISE_GATE).max(0.) * 14.).sqrt().clamp(0., 1.);
+        // dB mapping with a soft curve: normal speech moves the bars, hiss stays flat.
+        let db = 20. * rms.max(1e-6).log10();
+        let level = ((db - DB_FLOOR) / (DB_CEIL - DB_FLOOR)).clamp(0., 1.).powf(0.8);
         for i in 0..BAR_COUNT {
             // Middle bars reach a little higher.
             let center = 1. - (i as f32 - (BAR_COUNT as f32 - 1.) / 2.).abs() * 0.12;
