@@ -218,7 +218,7 @@ fn open_overlay(cx: &mut App, locked: bool) {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: None,
-                window_background: WindowBackgroundAppearance::Transparent,
+                window_background: WindowBackgroundAppearance::Opaque,
                 kind: WindowKind::PopUp,
                 focus: false,
                 is_movable: false,
