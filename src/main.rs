@@ -1,4 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod app_icon;
 mod assets;
 mod hotkey;
 mod main_window;
