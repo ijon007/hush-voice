@@ -1,4 +1,9 @@
-use gpui::{App, FontWeight, MouseButton, Window, div, prelude::*, px, rgb};
+use std::time::Duration;
+
+use gpui::{
+    Animation, AnimationExt, App, ElementId, FontWeight, MouseButton, Window, div, ease_out_quint,
+    prelude::*, px, rgb,
+};
 
 use crate::theme::{RADIUS_PX, RADIUS_SM_PX, Theme};
 
@@ -48,7 +53,7 @@ pub(crate) fn section_label(t: Theme, text: &'static str) -> impl IntoElement {
         .child(text)
 }
 
-pub(crate) fn selection_dot(t: Theme, selected: bool) -> impl IntoElement {
+pub(crate) fn selection_dot(t: Theme, selected: bool, anim_key: usize) -> impl IntoElement {
     div()
         .size(px(18.))
         .rounded_full()
@@ -61,7 +66,14 @@ pub(crate) fn selection_dot(t: Theme, selected: bool) -> impl IntoElement {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(div().size(px(6.)).rounded_full().bg(t.primary_text)),
+                    .child(
+                        // Inner dot scales in when a row becomes selected.
+                        div().size(px(6.)).rounded_full().bg(t.primary_text).with_animation(
+                            ("radio-dot", anim_key),
+                            Animation::new(Duration::from_millis(160)).with_easing(ease_out_quint()),
+                            |el, d| el.size(px(2. + 4. * d)),
+                        ),
+                    ),
             )
         })
 }
@@ -109,4 +121,29 @@ pub(crate) fn empty_state(t: Theme, title: &'static str, body: &'static str) -> 
                 .child(title),
         )
         .child(div().text_size(px(13.)).text_color(t.text_muted).child(body))
+}
+
+/// Staggered entrance: fades (and optionally lifts) an element in after
+/// `delay_ms`, over 220ms with an ease-out cubic.
+pub(crate) fn fade_in<E: IntoElement + Styled + 'static>(
+    el: E,
+    id: impl Into<ElementId>,
+    delay_ms: u64,
+    lift: bool,
+) -> gpui::AnyElement {
+    const RUN_MS: f32 = 220.;
+    let delay = delay_ms as f32;
+    let total = RUN_MS + delay;
+    el.with_animation(
+        id,
+        Animation::new(Duration::from_millis(total as u64)).with_easing(move |t| {
+            let x = ((t * total - delay) / RUN_MS).clamp(0., 1.);
+            1. - (1. - x).powi(3)
+        }),
+        move |el, d| {
+            let el = el.opacity(d);
+            if lift { el.mt(px(6. * (1. - d))) } else { el }
+        },
+    )
+    .into_any_element()
 }

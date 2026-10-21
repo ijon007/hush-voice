@@ -1,7 +1,7 @@
 //! hush-voice visual tokens. Every UI reads colors from `theme(cx)`, which
-//! resolves the user's Light / Dark / System choice to a `Theme` palette.
+//! resolves the user's Light / Dark choice to a `Theme` palette.
 
-use gpui::{App, Global, Rgba, WindowAppearance};
+use gpui::{App, Global, Rgba};
 
 const fn hex(rgb: u32) -> Rgba {
     Rgba {
@@ -21,7 +21,6 @@ pub const RADIUS_SM_PX: f32 = 8.0;
 pub enum ThemeMode {
     Light,
     Dark,
-    System,
 }
 
 #[derive(Clone, Copy)]
@@ -133,10 +132,6 @@ pub fn theme(cx: &App) -> Theme {
     match theme_mode(cx) {
         ThemeMode::Light => Theme::LIGHT,
         ThemeMode::Dark => Theme::DARK,
-        ThemeMode::System => match cx.window_appearance() {
-            WindowAppearance::Dark | WindowAppearance::VibrantDark => Theme::DARK,
-            _ => Theme::LIGHT,
-        },
     }
 }
 
@@ -157,7 +152,6 @@ fn load_mode() -> ThemeMode {
         .unwrap_or_default();
     match raw.trim() {
         "dark" => ThemeMode::Dark,
-        "system" => ThemeMode::System,
         _ => ThemeMode::Light,
     }
 }
@@ -170,7 +164,6 @@ fn save_mode(mode: ThemeMode) {
     let value = match mode {
         ThemeMode::Light => "light",
         ThemeMode::Dark => "dark",
-        ThemeMode::System => "system",
     };
     let _ = std::fs::write(path, value);
 }

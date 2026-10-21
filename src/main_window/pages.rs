@@ -1,9 +1,14 @@
-use gpui::{Context, FontWeight, SharedString, div, prelude::*, px, svg};
+use std::time::Duration;
+
+use gpui::{
+    Animation, AnimationExt, Context, FontWeight, SharedString, div, ease_out_quint, prelude::*,
+    px, svg,
+};
 
 use crate::main_window::MainWindow;
 use crate::models::{TranscriptRow, compute_stats};
 use crate::theme::{RADIUS_PX, Theme, theme};
-use crate::widgets::{card, empty_state, section_label};
+use crate::widgets::{card, empty_state, fade_in, section_label};
 
 pub(super) fn page_header(t: Theme, title: &'static str, subtitle: &'static str) -> impl IntoElement {
     div()
@@ -74,7 +79,13 @@ impl MainWindow {
         let last = self.history.len() - 1;
         let mut rows = Vec::new();
         for (i, row) in self.history.iter().enumerate() {
-            rows.push(self.history_row(t, i, row, i == last, cx).into_any_element());
+            let el = self.history_row(t, i, row, i == last, cx);
+            // First show only: rows fade in after the stats, 25ms apart (first 8).
+            rows.push(if self.nav_count == 0 && i < 8 {
+                fade_in(el, ("history-in", i), 120 + i as u64 * 25, false)
+            } else {
+                el.into_any_element()
+            });
         }
         card(t).children(rows).into_any_element()
     }
@@ -86,7 +97,7 @@ impl MainWindow {
         row: &TranscriptRow,
         is_last: bool,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> gpui::Stateful<gpui::Div> {
         let group: SharedString = format!("history-row-{index}").into();
         let copied = self.copied == Some(index);
         div()
@@ -144,13 +155,29 @@ impl MainWindow {
                     .hover(move |s| s.bg(t.surface_selected))
                     .active(move |s| s.bg(t.surface_active))
                     .cursor_pointer()
-                    .child(
+                    .child(if copied {
+                        // Check pops in: scale 10px -> 15px with a fade.
                         svg()
-                            .path(if copied { "icons/check.svg" } else { "icons/copy.svg" })
+                            .path("icons/check.svg")
                             .size(px(15.))
-                            .text_color(if copied { t.text } else { t.text_muted })
-                            .group_hover(SharedString::from(format!("copy-{index}")), move |s| s.text_color(t.text)),
-                    )
+                            .text_color(t.text)
+                            .with_animation(
+                                ("copied", self.copy_nonce),
+                                Animation::new(Duration::from_millis(180))
+                                    .with_easing(ease_out_quint()),
+                                |el, d| el.size(px(10. + 5. * d)).opacity(0.4 + 0.6 * d),
+                            )
+                            .into_any_element()
+                    } else {
+                        svg()
+                            .path("icons/copy.svg")
+                            .size(px(15.))
+                            .text_color(t.text_muted)
+                            .group_hover(SharedString::from(format!("copy-{index}")), move |s| {
+                                s.text_color(t.text)
+                            })
+                            .into_any_element()
+                    })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.copy_transcript(index, cx);
@@ -159,7 +186,7 @@ impl MainWindow {
     }
 }
 
-fn stat_card(t: Theme, icon: &'static str, value: String, label: &'static str) -> impl IntoElement {
+fn stat_card(t: Theme, icon: &'static str, value: String, label: &'static str) -> gpui::Div {
     card(t)
         .flex_1()
         .gap(px(14.))
@@ -198,12 +225,21 @@ fn group_thousands(n: usize) -> String {
 impl MainWindow {
     fn render_stats(&self, t: Theme) -> impl IntoElement {
         let stats = compute_stats(&self.history);
-        div()
-            .flex()
-            .gap(px(12.))
-            .pb(px(28.))
-            .child(stat_card(t, "icons/bolt.svg", stats.wpm.to_string(), "avg words per minute"))
-            .child(stat_card(t, "icons/text.svg", group_thousands(stats.total_words), "total words"))
-            .child(stat_card(t, "icons/flame.svg", stats.streak_days.to_string(), "day streak"))
+        let cards = [
+            stat_card(t, "icons/bolt.svg", stats.wpm.to_string(), "avg words per minute"),
+            stat_card(t, "icons/text.svg", group_thousands(stats.total_words), "total words"),
+            stat_card(t, "icons/flame.svg", stats.streak_days.to_string(), "day streak"),
+        ];
+        let first_show = self.nav_count == 0;
+        div().flex().gap(px(12.)).pb(px(28.)).children(cards.into_iter().enumerate().map(
+            move |(i, c)| {
+                // First show only: cards rise in 40ms apart.
+                if first_show {
+                    div().flex_1().child(c.size_full()).map(|el| fade_in(el, ("stat-in", i), i as u64 * 40, true))
+                } else {
+                    div().flex_1().child(c.size_full()).into_any_element()
+                }
+            },
+        ))
     }
 }

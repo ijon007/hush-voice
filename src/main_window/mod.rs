@@ -5,7 +5,10 @@ mod sidebar;
 
 use std::time::Duration;
 
-use gpui::{ClipboardItem, Context, SharedString, Subscription, Timer, Window, div, prelude::*, px};
+use gpui::{
+    Animation, AnimationExt, ClipboardItem, Context, SharedString, Subscription, Timer, Window, div,
+    ease_out_quint, prelude::*, px,
+};
 
 use crate::models::{ModelOption, Page, TranscriptRow, sample_history};
 use crate::theme::theme;
@@ -18,6 +21,12 @@ pub(crate) struct MainWindow {
     history: Vec<TranscriptRow>,
     /// History row whose text was just copied (shows a check for ~1.2s).
     copied: Option<usize>,
+    /// Bumped on each copy so the check icon replays its pop-in.
+    copy_nonce: usize,
+    /// Number of page switches; 0 means first show (drives entrance stagger).
+    nav_count: usize,
+    /// Bumped when the selected model changes so the radio dot scales in.
+    dot_nonce: usize,
     _appearance: Subscription,
 }
 
@@ -48,11 +57,17 @@ impl MainWindow {
             hotkey: "Ctrl + Space".into(),
             history: sample_history(),
             copied: None,
+            copy_nonce: 0,
+            nav_count: 0,
+            dot_nonce: 0,
             _appearance: appearance,
         }
     }
 
     fn set_page(&mut self, page: Page, cx: &mut Context<Self>) {
+        if self.page != page {
+            self.nav_count += 1;
+        }
         self.page = page;
         cx.notify();
     }
@@ -61,6 +76,7 @@ impl MainWindow {
         let Some(row) = self.history.get(index) else { return };
         cx.write_to_clipboard(ClipboardItem::new_string(row.text.to_string()));
         self.copied = Some(index);
+        self.copy_nonce += 1;
         cx.notify();
         cx.spawn(async move |this, cx| {
             Timer::after(Duration::from_millis(1200)).await;
@@ -75,6 +91,9 @@ impl MainWindow {
     }
 
     fn select_model(&mut self, index: usize, cx: &mut Context<Self>) {
+        if self.active_model != index {
+            self.dot_nonce += 1;
+        }
         self.active_model = index;
         cx.notify();
     }
@@ -88,6 +107,21 @@ impl Render for MainWindow {
             Page::Settings => self.render_settings_page(cx).into_any_element(),
             Page::Dictionary => self.render_dictionary(cx).into_any_element(),
             Page::Shortcuts => self.render_shortcuts(cx).into_any_element(),
+        };
+        // Page switch: short fade + 6px rise. Skipped on first show, where the
+        // Home cards/rows run their own staggered entrance instead.
+        let content = if self.nav_count == 0 {
+            content
+        } else {
+            div()
+                .w_full()
+                .child(content)
+                .with_animation(
+                    ("page", self.nav_count),
+                    Animation::new(Duration::from_millis(180)).with_easing(ease_out_quint()),
+                    |el, d| el.opacity(d).mt(px(6. * (1. - d))),
+                )
+                .into_any_element()
         };
 
         div()
