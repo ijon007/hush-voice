@@ -186,27 +186,79 @@ impl MainWindow {
     }
 }
 
-fn stat_card(t: Theme, icon: &'static str, value: String, label: &'static str) -> gpui::Div {
-    card(t)
+/// One column of the grouped stats card: chip + label, big number with an
+/// inline unit, and a small muted sub-line computed from real history.
+fn stat_cell(
+    t: Theme,
+    icon: &'static str,
+    label: &'static str,
+    value: String,
+    unit: Option<&'static str>,
+    sub: String,
+    divider: bool,
+) -> impl IntoElement {
+    div()
         .flex_1()
+        .min_w(px(0.))
+        .flex()
+        .flex_col()
         .gap(px(14.))
-        .px(px(18.))
-        .py(px(16.))
-        .child(svg().path(icon).size(px(16.)).text_color(t.text_muted))
+        .px(px(20.))
+        .py(px(18.))
+        .when(divider, |el| el.border_l_1().border_color(t.border))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .size(px(22.))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(6.))
+                        .bg(t.track)
+                        .child(svg().path(icon).size(px(12.)).text_color(t.text_secondary)),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(t.text_secondary)
+                        .child(label),
+                ),
+        )
         .child(
             div()
                 .flex()
                 .flex_col()
-                .gap(px(2.))
+                .gap(px(4.))
                 .child(
                     div()
-                        .text_size(px(26.))
-                        .line_height(px(30.))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(t.text)
-                        .child(value),
+                        .flex()
+                        .items_baseline()
+                        .gap(px(5.))
+                        .child(
+                            div()
+                                .text_size(px(30.))
+                                .line_height(px(32.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(t.text)
+                                .child(value),
+                        )
+                        .when_some(unit, |el, unit| {
+                            el.child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(t.text_muted)
+                                    .child(unit),
+                            )
+                        }),
                 )
-                .child(div().text_size(px(12.)).text_color(t.text_muted).child(label)),
+                .child(div().text_size(px(11.5)).text_color(t.text_muted).child(sub)),
         )
 }
 
@@ -222,24 +274,76 @@ fn group_thousands(n: usize) -> String {
     out
 }
 
+fn plural(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// Sub-line figures, all derived from the history rows.
+struct StatExtras {
+    timed_dictations: usize,
+    words_this_week: usize,
+    best_streak: usize,
+}
+
+fn stat_extras(rows: &[TranscriptRow]) -> StatExtras {
+    let today = crate::models::today();
+    let timed_dictations = rows.iter().filter(|r| r.seconds > 0.0).count();
+    let words_this_week = rows
+        .iter()
+        .filter(|r| r.day.is_some_and(|d| d > today - 7))
+        .map(|r| r.text.split_whitespace().count())
+        .sum();
+    let mut days: Vec<i64> = rows.iter().filter_map(|r| r.day).collect();
+    days.sort_unstable();
+    days.dedup();
+    let (mut best, mut run) = (0usize, 0usize);
+    for (i, d) in days.iter().enumerate() {
+        run = if i > 0 && days[i - 1] == d - 1 { run + 1 } else { 1 };
+        best = best.max(run);
+    }
+    StatExtras { timed_dictations, words_this_week, best_streak: best }
+}
+
 impl MainWindow {
     fn render_stats(&self, t: Theme) -> impl IntoElement {
         let stats = compute_stats(&self.history);
-        let cards = [
-            stat_card(t, "icons/bolt.svg", stats.wpm.to_string(), "avg words per minute"),
-            stat_card(t, "icons/text.svg", group_thousands(stats.total_words), "total words"),
-            stat_card(t, "icons/flame.svg", stats.streak_days.to_string(), "day streak"),
-        ];
-        let first_show = self.nav_count == 0;
-        div().flex().gap(px(12.)).pb(px(28.)).children(cards.into_iter().enumerate().map(
-            move |(i, c)| {
-                // First show only: cards rise in 40ms apart.
-                if first_show {
-                    div().flex_1().child(c.size_full()).map(|el| fade_in(el, ("stat-in", i), i as u64 * 40, true))
-                } else {
-                    div().flex_1().child(c.size_full()).into_any_element()
-                }
-            },
-        ))
+        let extra = stat_extras(&self.history);
+        let streak_unit = if stats.streak_days == 1 { "day" } else { "days" };
+        let grouped = card(t)
+            .flex_row()
+            .child(stat_cell(
+                t,
+                "icons/bolt.svg",
+                "Speed",
+                stats.wpm.to_string(),
+                Some("wpm"),
+                format!("avg across {}", plural(extra.timed_dictations, "dictation", "dictations")),
+                false,
+            ))
+            .child(stat_cell(
+                t,
+                "icons/text.svg",
+                "Words",
+                group_thousands(stats.total_words),
+                None,
+                format!("{} this week", group_thousands(extra.words_this_week)),
+                true,
+            ))
+            .child(stat_cell(
+                t,
+                "icons/flame.svg",
+                "Streak",
+                stats.streak_days.to_string(),
+                Some(streak_unit),
+                format!("best {}", plural(extra.best_streak, "day", "days")),
+                true,
+            ));
+        let wrap = div().pb(px(28.));
+        // First show only: the stats card rises in once.
+        if self.nav_count == 0 {
+            wrap.child(fade_in(grouped, "stats-in", 0, true)).into_any_element()
+        } else {
+            wrap.child(grouped).into_any_element()
+        }
     }
 }
