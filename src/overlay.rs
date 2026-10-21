@@ -64,6 +64,8 @@ const BAR_MAX: f32 = 20.;
 pub(crate) struct LevelMeter {
     pub floor_db: f32,
     pub open: bool,
+    /// Seconds of audio seen; the first ~150ms just seed the floor.
+    warmup: f32,
 }
 
 const GATE_OPEN_DB: f32 = 9.;
@@ -73,12 +75,23 @@ const RANGE_SPAN_DB: f32 = 24.;
 
 impl LevelMeter {
     pub(crate) fn new() -> Self {
-        Self { floor_db: -60., open: false }
+        Self { floor_db: 0., open: false, warmup: 0. }
     }
 
     /// Returns the 0..1 level for this frame (exactly 0 while gated).
     pub(crate) fn update(&mut self, db: f32, dt: f32) -> f32 {
+        // Seed the floor from the quietest of the first frames (gate stays closed).
+        if self.warmup < 0.15 {
+            self.floor_db = if self.warmup == 0. { db } else { self.floor_db.min(db) };
+            self.warmup += dt;
+            return 0.;
+        }
         let rel = db - self.floor_db;
+        if self.open {
+            // Steady noise (fan, hum) must not hold the gate open forever:
+            // creep toward it slowly; real speech is far too short to matter.
+            self.floor_db += (db - self.floor_db) * (1. - (-dt / 4.0).exp());
+        }
         self.open = if self.open { rel > GATE_CLOSE_DB } else { rel > GATE_OPEN_DB };
         if !self.open {
             let tau = if db < self.floor_db { 0.3 } else { 6.0 };
@@ -496,6 +509,13 @@ mod tests {
     fn silence_stays_flat_and_speech_moves() {
         let mut m = LevelMeter::new();
         let dt = 1. / 60.;
+        // Starts in steady -42 dB room noise (seen live): must settle closed.
+        let mut tail = 0.;
+        for _ in 0..600 {
+            tail = m.update(-42., dt);
+        }
+        assert_eq!(tail, 0., "steady noise must close the gate");
+        let mut m = LevelMeter::new();
         let mut max_silent: f32 = 0.;
         for i in 0..240 {
             let jitter = ((i * 7919) % 13) as f32 / 13. * 6. - 3.;
@@ -509,5 +529,11 @@ mod tests {
         }
         let avg = speech.iter().sum::<f32>() / speech.len() as f32;
         assert!(avg > 0.7, "normal speech should reach 70%+, got {avg}");
+        // A fan switching on (steady +15 dB) closes the gate again within ~5s.
+        let mut last = 1.;
+        for _ in 0..600 {
+            last = m.update(-40., dt);
+        }
+        assert_eq!(last, 0., "steady fan noise must be absorbed into the floor");
     }
 }
