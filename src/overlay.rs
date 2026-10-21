@@ -129,15 +129,15 @@ fn lock_glyph(color: gpui::Rgba) -> impl IntoElement {
         .flex_none()
         .child(
             div()
-                .w(px(6.))
-                .h(px(5.))
-                .border_t(px(1.6))
-                .border_l(px(1.6))
-                .border_r(px(1.6))
+                .w(px(4.5))
+                .h(px(3.5))
+                .border_t(px(1.2))
+                .border_l(px(1.2))
+                .border_r(px(1.2))
                 .border_color(color)
-                .rounded_t(px(3.)),
+                .rounded_t(px(2.25)),
         )
-        .child(div().w(px(10.)).h(px(7.)).rounded(px(2.)).bg(color))
+        .child(div().w(px(7.)).h(px(5.)).rounded(px(1.5)).bg(color))
 }
 
 impl Render for RecordingPill {
