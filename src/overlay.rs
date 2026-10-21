@@ -242,7 +242,9 @@ pub(crate) fn toggle_overlay(cx: &mut App) {
 fn force_hide_overlay(cx: &mut App) {
     if let Some(handle) = cx.global_mut::<OverlayState>().handle.take() {
         cx.global_mut::<OverlayState>().sticky = false;
-        let _ = handle.update(cx, |_, window, _| {
+        let _ = handle.update(cx, |pill, window, _| {
+            // Release the mic before the window goes away.
+            pill.meter = None;
             window.remove_window();
         });
     }
