@@ -43,16 +43,52 @@ pub(crate) struct RecordingPill {
     rng: u32,
     last_frame: Instant,
     last_roll: Instant,
+    level_meter: LevelMeter,
+    #[cfg(debug_assertions)]
+    last_log: Instant,
 }
 
 const BAR_COUNT: usize = 7;
 const BAR_W: f32 = 2.;
 const BAR_GAP: f32 = 3.;
 const BAR_MIN: f32 = 2.;
-const BAR_MAX: f32 = 14.;
-/// Level mapping in dBFS: the gate (and 0) at -50 dB, full height at -15 dB.
-const DB_FLOOR: f32 = -50.;
-const DB_CEIL: f32 = -15.;
+const BAR_MAX: f32 = 20.;
+
+/// Speech level from mic dBFS, relative to an adaptive ambient floor.
+///
+/// - Floor drops fast (~0.3s) toward quieter levels and rises slowly (~6s),
+///   only while the gate is closed, so speech never drags it up.
+/// - Gate opens at floor + 9 dB, closes below floor + 5 dB (hysteresis).
+/// - Open: floor + 6 dB .. floor + 30 dB maps to 0..1 with a soft curve,
+///   so normal talking lands around 70-100%.
+pub(crate) struct LevelMeter {
+    pub floor_db: f32,
+    pub open: bool,
+}
+
+const GATE_OPEN_DB: f32 = 9.;
+const GATE_CLOSE_DB: f32 = 5.;
+const RANGE_START_DB: f32 = 6.;
+const RANGE_SPAN_DB: f32 = 24.;
+
+impl LevelMeter {
+    pub(crate) fn new() -> Self {
+        Self { floor_db: -60., open: false }
+    }
+
+    /// Returns the 0..1 level for this frame (exactly 0 while gated).
+    pub(crate) fn update(&mut self, db: f32, dt: f32) -> f32 {
+        let rel = db - self.floor_db;
+        self.open = if self.open { rel > GATE_CLOSE_DB } else { rel > GATE_OPEN_DB };
+        if !self.open {
+            let tau = if db < self.floor_db { 0.3 } else { 6.0 };
+            self.floor_db += (db - self.floor_db) * (1. - (-dt / tau).exp());
+            self.floor_db = self.floor_db.clamp(-90., -25.);
+            return 0.;
+        }
+        ((rel - RANGE_START_DB) / RANGE_SPAN_DB).clamp(0., 1.).powf(0.7)
+    }
+}
 
 impl RecordingPill {
     fn new(locked: bool) -> Self {
@@ -66,6 +102,9 @@ impl RecordingPill {
             rng: 0x9e37_79b9,
             last_frame: now,
             last_roll: now,
+            level_meter: LevelMeter::new(),
+            #[cfg(debug_assertions)]
+            last_log: now,
         }
     }
 
@@ -91,9 +130,17 @@ impl RecordingPill {
             }
         }
         let rms = self.meter.as_ref().map(|m| m.level()).unwrap_or(0.);
-        // dB mapping with a soft curve: normal speech moves the bars, hiss stays flat.
         let db = 20. * rms.max(1e-6).log10();
-        let level = ((db - DB_FLOOR) / (DB_CEIL - DB_FLOOR)).clamp(0., 1.).powf(0.8);
+        let level = self.level_meter.update(db, dt);
+        #[cfg(debug_assertions)]
+        if (now - self.last_log).as_millis() >= 250 {
+            self.last_log = now;
+            eprintln!(
+                "hush meter: db={db:.1} floor={:.1} gate={} level={level:.2}",
+                self.level_meter.floor_db,
+                if self.level_meter.open { "open" } else { "closed" },
+            );
+        }
         for i in 0..BAR_COUNT {
             // Middle bars reach a little higher.
             let center = 1. - (i as f32 - (BAR_COUNT as f32 - 1.) / 2.).abs() * 0.12;
@@ -438,4 +485,29 @@ fn overlay_hwnd(window: &Window) -> Option<windows::Win32::Foundation::HWND> {
         return None;
     };
     Some(HWND(win32.hwnd.get() as *mut _))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LevelMeter;
+
+    /// Room tone around -55 dB with +-3 dB jitter, then speech around -30 dB.
+    #[test]
+    fn silence_stays_flat_and_speech_moves() {
+        let mut m = LevelMeter::new();
+        let dt = 1. / 60.;
+        let mut max_silent: f32 = 0.;
+        for i in 0..240 {
+            let jitter = ((i * 7919) % 13) as f32 / 13. * 6. - 3.;
+            max_silent = max_silent.max(m.update(-55. + jitter, dt));
+        }
+        assert_eq!(max_silent, 0., "gate must stay closed on room tone");
+        let mut speech = Vec::new();
+        for i in 0..60 {
+            let jitter = ((i * 104729) % 11) as f32 / 11. * 8. - 4.;
+            speech.push(m.update(-30. + jitter, dt));
+        }
+        let avg = speech.iter().sum::<f32>() / speech.len() as f32;
+        assert!(avg > 0.7, "normal speech should reach 70%+, got {avg}");
+    }
 }
