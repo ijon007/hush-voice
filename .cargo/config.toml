@@ -1,0 +1,6 @@
+# whisper-rs-sys builds ggml with CMake profile Release in release builds, and the
+# cmake crate replaces CMAKE_<LANG>_FLAGS_RELEASE with cc's flags, which on MSVC lack
+# /O2, so whisper ran ~10x slower than in dev builds (RelWithDebInfo). Pin the flags.
+[env]
+CMAKE_C_FLAGS_RELEASE = "/MD /O2 /Ob2 /DNDEBUG"
+CMAKE_CXX_FLAGS_RELEASE = "/MD /O2 /Ob2 /DNDEBUG"
