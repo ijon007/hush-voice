@@ -1,10 +1,10 @@
-//! Runtime window icon: swaps the taskbar / Alt-Tab icon with the theme.
-//! Light theme -> dark tile (resource 1), dark theme -> light tile (resource 2).
+//! Runtime window icon: always the dark tile (exe resource 1) for the
+//! taskbar / Alt-Tab, regardless of theme.
 
 use gpui::Window;
 
 #[cfg(windows)]
-pub(crate) fn apply(window: &Window, dark_theme: bool) {
+pub(crate) fn apply(window: &Window) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -17,7 +17,7 @@ pub(crate) fn apply(window: &Window, dark_theme: bool) {
     let Ok(handle) = HasWindowHandle::window_handle(window) else { return };
     let RawWindowHandle::Win32(win32) = handle.as_raw() else { return };
     let hwnd = HWND(win32.hwnd.get() as *mut _);
-    let id: usize = if dark_theme { 2 } else { 1 };
+    let id: usize = 1;
 
     unsafe {
         let Ok(module) = GetModuleHandleW(PCWSTR::null()) else { return };
@@ -43,4 +43,4 @@ pub(crate) fn apply(window: &Window, dark_theme: bool) {
 }
 
 #[cfg(not(windows))]
-pub(crate) fn apply(_window: &Window, _dark_theme: bool) {}
+pub(crate) fn apply(_window: &Window) {}

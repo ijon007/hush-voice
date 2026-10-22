@@ -23,8 +23,8 @@ pub(crate) struct MainWindow {
     history: Vec<TranscriptRow>,
     /// History row whose text was just copied (shows a check for ~1.2s).
     copied: Option<usize>,
-    /// Theme the taskbar icon was last set for (dark = true).
-    icon_dark: Option<bool>,
+    /// Taskbar/window icon has been set (always the dark tile).
+    icon_applied: bool,
     /// Bumped on each copy so the check icon replays its pop-in.
     copy_nonce: usize,
     /// Number of page switches; 0 means first show (drives entrance stagger).
@@ -94,7 +94,7 @@ impl MainWindow {
             hotkey: "Ctrl + Space".into(),
             history: sample_history(),
             copied: None,
-            icon_dark: None,
+            icon_applied: false,
             copy_nonce: 0,
             nav_count: 0,
             dot_nonce: 0,
@@ -167,10 +167,9 @@ impl MainWindow {
 
 impl Render for MainWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let dark = crate::theme::theme_mode(cx) == crate::theme::ThemeMode::Dark;
-        if self.icon_dark != Some(dark) {
-            crate::app_icon::apply(window, dark);
-            self.icon_dark = Some(dark);
+        if !self.icon_applied {
+            crate::app_icon::apply(window);
+            self.icon_applied = true;
         }
         let t = theme(cx);
         let content = match self.page {
