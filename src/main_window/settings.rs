@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use gpui::{
     Animation, AnimationExt, AnyElement, Context, FontWeight, KeyDownEvent, MouseButton,
-    ModifiersChangedEvent, SharedString, Window, div, prelude::*, px, svg,
+    ModifiersChangedEvent, SharedString, Timer, Window, div, prelude::*, px, svg,
 };
 
 use crate::chord::{Chord, HotkeySlot};
@@ -990,6 +990,7 @@ impl MainWindow {
         self.hotkey_edit = Some(slot);
         self.hotkey_draft = Chord::default();
         crate::hotkey::set_capturing(cx, true);
+        self.watch_hotkey_modifiers(cx);
         let handle = match slot {
             HotkeySlot::Hold => &self.hold_focus,
             HotkeySlot::Toggle => &self.toggle_focus,
@@ -1001,7 +1002,8 @@ impl MainWindow {
     pub(super) fn commit_hotkey(&mut self, cx: &mut Context<Self>) {
         let Some(slot) = self.hotkey_edit.take() else { return };
         crate::hotkey::set_capturing(cx, false);
-        let draft = std::mem::take(&mut self.hotkey_draft);
+        let (ctrl, alt, shift, win) = crate::hotkey::pressed_modifiers();
+        let draft = Chord::capture_modifiers(std::mem::take(&mut self.hotkey_draft), ctrl, alt, shift, win);
         if !draft.is_empty() {
             let other = match slot {
                 HotkeySlot::Hold => prefs(cx).toggle_chord(),
@@ -1036,13 +1038,8 @@ impl MainWindow {
             cx.stop_propagation();
             return;
         }
-        self.hotkey_draft = Chord::from_keystroke(
-            ks.modifiers.control,
-            ks.modifiers.alt,
-            ks.modifiers.shift,
-            ks.modifiers.platform,
-            &ks.key,
-        );
+        let (ctrl, alt, shift, win) = live_modifiers(ks.modifiers.control, ks.modifiers.alt, ks.modifiers.shift, ks.modifiers.platform);
+        self.hotkey_draft = Chord::from_keystroke(self.hotkey_draft.clone(), ctrl, alt, shift, win, &ks.key);
         window.prevent_default();
         cx.stop_propagation();
         cx.notify();
@@ -1050,11 +1047,41 @@ impl MainWindow {
 
     fn on_hotkey_modifiers(&mut self, event: &ModifiersChangedEvent, cx: &mut Context<Self>) {
         let m = event.modifiers;
-        self.hotkey_draft =
-            Chord::capture_modifiers(self.hotkey_draft.clone(), m.control, m.alt, m.shift, m.platform);
+        let (ctrl, alt, shift, win) = live_modifiers(m.control, m.alt, m.shift, m.platform);
+        self.hotkey_draft = Chord::capture_modifiers(self.hotkey_draft.clone(), ctrl, alt, shift, win);
         cx.stop_propagation();
         cx.notify();
     }
+
+    /// GPUI never delivers the Windows key, and Ctrl+Alt arrives with both flags cleared.
+    fn watch_hotkey_modifiers(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            loop {
+                Timer::after(Duration::from_millis(16)).await;
+                let stop = this.update(cx, |this, cx| {
+                    if this.hotkey_edit.is_none() {
+                        return true;
+                    }
+                    let (ctrl, alt, shift, win) = crate::hotkey::pressed_modifiers();
+                    let next = Chord::capture_modifiers(this.hotkey_draft.clone(), ctrl, alt, shift, win);
+                    if next != this.hotkey_draft {
+                        this.hotkey_draft = next;
+                        cx.notify();
+                    }
+                    false
+                });
+                if stop.unwrap_or(true) {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+}
+
+fn live_modifiers(ctrl: bool, alt: bool, shift: bool, win: bool) -> (bool, bool, bool, bool) {
+    let (c, a, s, w) = crate::hotkey::pressed_modifiers();
+    (ctrl || c, alt || a, shift || s, win || w)
 }
 
 /// Physical-looking keycap: raised face sitting on a darker lip.

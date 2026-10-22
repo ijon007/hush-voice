@@ -53,22 +53,54 @@ impl Chord {
         !self.ctrl && !self.alt && !self.shift && !self.win && self.key.is_none()
     }
 
-    /// Last key-down while recording: modifiers from the event, key if it isn't a modifier.
-    pub(crate) fn from_keystroke(ctrl: bool, alt: bool, shift: bool, win: bool, key: &str) -> Self {
-        let mut chord = Self { ctrl, alt, shift, win, key: None };
+    /// Key-down while recording. Modifiers union with `prev` (a Ctrl event must not
+    /// drop Win/Alt already seen). A modifier key sets its flag; anything else is the key.
+    pub(crate) fn from_keystroke(
+        prev: Self,
+        ctrl: bool,
+        alt: bool,
+        shift: bool,
+        win: bool,
+        key: &str,
+    ) -> Self {
+        let mut chord = Self {
+            ctrl: prev.ctrl || ctrl,
+            alt: prev.alt || alt,
+            shift: prev.shift || shift,
+            win: prev.win || win,
+            key: prev.key.clone(),
+        };
         if let Some(name) = canonical_key(key) {
-            if !is_modifier_name(&name) {
+            if is_modifier_name(&name) {
+                match name.as_str() {
+                    "ctrl" => chord.ctrl = true,
+                    "alt" => chord.alt = true,
+                    "shift" => chord.shift = true,
+                    "win" => chord.win = true,
+                    _ => {}
+                }
+            } else {
                 chord.key = Some(name);
             }
         }
         chord
     }
 
-    /// Windows fires modifier keys as ModifiersChanged, not KeyDown.
-    /// All-keys-up must not wipe the last combo (the recorder is sticky until confirm).
+    /// Windows reports modifier keys as ModifiersChanged, one partial snapshot at a time,
+    /// and a key-up often leaves only the first modifier still down.
+    /// ponytail: sticky union until confirm — releasing a key does not remove it.
+    /// Click the field again to start over. Upgrade path is a chord that tracks press order.
     pub(crate) fn capture_modifiers(prev: Self, ctrl: bool, alt: bool, shift: bool, win: bool) -> Self {
-        let next = Self { ctrl, alt, shift, win, key: None };
-        if next.is_empty() { prev } else { next }
+        if !ctrl && !alt && !shift && !win {
+            return prev;
+        }
+        Self {
+            ctrl: prev.ctrl || ctrl,
+            alt: prev.alt || alt,
+            shift: prev.shift || shift,
+            win: prev.win || win,
+            key: prev.key.clone(),
+        }
     }
 
     pub(crate) fn labels(&self) -> Vec<String> {
@@ -219,9 +251,9 @@ mod tests {
 
     #[test]
     fn from_keystroke_builds_the_held_combo() {
-        let empty = Chord::from_keystroke(true, false, false, false, "control");
+        let empty = Chord::from_keystroke(Chord::default(), true, false, false, false, "control");
         assert!(empty.ctrl && empty.key.is_none());
-        let hold = Chord::from_keystroke(true, false, false, false, "space");
+        let hold = Chord::from_keystroke(empty, true, false, false, false, "space");
         assert_eq!(hold.display(), "Ctrl + Space");
     }
 
@@ -233,6 +265,27 @@ mod tests {
         assert_eq!(draft.display(), "Ctrl + Win + Alt");
         draft = Chord::capture_modifiers(draft, false, false, false, false);
         assert_eq!(draft.display(), "Ctrl + Win + Alt");
+    }
+
+    #[test]
+    fn capture_modifiers_keeps_earlier_modifiers_when_a_later_snapshot_is_partial() {
+        let mut draft = Chord::default();
+        draft = Chord::capture_modifiers(draft, true, false, false, false);
+        draft = Chord::capture_modifiers(draft, false, true, false, false);
+        assert_eq!(draft.display(), "Ctrl + Alt");
+        draft = Chord::capture_modifiers(draft, false, false, false, true);
+        assert_eq!(draft.display(), "Ctrl + Win + Alt");
+        draft = Chord::capture_modifiers(draft, true, false, false, false);
+        assert_eq!(draft.display(), "Ctrl + Win + Alt");
+    }
+
+    #[test]
+    fn from_keystroke_does_not_drop_modifiers_already_captured() {
+        let draft = Chord::capture_modifiers(Chord::default(), true, false, false, true);
+        let hold = Chord::from_keystroke(draft, true, false, false, false, "space");
+        assert_eq!(hold.display(), "Ctrl + Win + Space");
+        let alt = Chord::from_keystroke(Chord::default(), true, false, false, false, "alt");
+        assert_eq!(alt.display(), "Ctrl + Alt");
     }
 
     #[test]

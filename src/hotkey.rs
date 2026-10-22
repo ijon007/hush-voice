@@ -184,28 +184,44 @@ fn code_from_key(key: &str) -> Option<Code> {
     name.parse().ok()
 }
 
-fn chord_down(chord: &Chord) -> bool {
-    if chord.is_empty() {
-        return false;
-    }
+/// Physical Ctrl/Alt/Shift/Win. GPUI's modifier snapshot drops the Windows key and
+/// treats Ctrl+Alt as AltGr, so recording has to read the keys itself.
+pub(crate) fn pressed_modifiers() -> (bool, bool, bool, bool) {
     #[cfg(windows)]
     {
         use windows::Win32::UI::Input::KeyboardAndMouse::{
             GetAsyncKeyState, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
         };
         let down = |vk: VIRTUAL_KEY| unsafe { (GetAsyncKeyState(vk.0 as i32) as u16 & 0x8000) != 0 };
-        if chord.ctrl && !down(VK_CONTROL) {
+        (down(VK_CONTROL), down(VK_MENU), down(VK_SHIFT), down(VK_LWIN) || down(VK_RWIN))
+    }
+    #[cfg(not(windows))]
+    {
+        (false, false, false, false)
+    }
+}
+
+fn chord_down(chord: &Chord) -> bool {
+    if chord.is_empty() {
+        return false;
+    }
+    #[cfg(windows)]
+    {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VIRTUAL_KEY};
+        let (ctrl, alt, shift, win) = pressed_modifiers();
+        if chord.ctrl && !ctrl {
             return false;
         }
-        if chord.alt && !down(VK_MENU) {
+        if chord.alt && !alt {
             return false;
         }
-        if chord.shift && !down(VK_SHIFT) {
+        if chord.shift && !shift {
             return false;
         }
-        if chord.win && !(down(VK_LWIN) || down(VK_RWIN)) {
+        if chord.win && !win {
             return false;
         }
+        let down = |vk: VIRTUAL_KEY| unsafe { (GetAsyncKeyState(vk.0 as i32) as u16 & 0x8000) != 0 };
         if let Some(key) = &chord.key {
             let Some(vk) = vk_for_key(key) else {
                 return false;
