@@ -4,6 +4,7 @@ mod pages;
 mod settings;
 mod shortcuts;
 mod sidebar;
+mod style;
 
 use std::time::Duration;
 
@@ -13,7 +14,10 @@ use gpui::{
 };
 
 use crate::models::{ModelOption, Page, Shortcut, TranscriptRow, sample_history};
+use crate::overlay::audio::{MicMeter, input_device_names};
+use crate::prefs::{prefs, update_prefs};
 use crate::theme::theme;
+use settings::SettingsTab;
 
 pub(crate) struct MainWindow {
     page: Page,
@@ -64,6 +68,20 @@ pub(crate) struct MainWindow {
     dict_draft: String,
     dict_dialog_replace: bool,
     dict_word_focus: FocusHandle,
+    settings_tab: SettingsTab,
+    /// Bumped on tab switch so the body cross-fades.
+    tab_nonce: usize,
+    /// Per-switch animation keys: [launch at login, sound cues].
+    switch_nonce: [usize; 2],
+    /// Cached HKCU Run key state.
+    launch_at_login: bool,
+    /// Live meter while the Audio tab is open; dropped (mic released) otherwise.
+    mic_test: Option<MicMeter>,
+    mic_level: f32,
+    mic_devices: Vec<String>,
+    default_mic: Option<String>,
+    mic_nonce: usize,
+    style_nonce: usize,
     _appearance: Subscription,
 }
 
@@ -126,7 +144,60 @@ impl MainWindow {
             dict_draft: String::new(),
             dict_dialog_replace: false,
             dict_word_focus: cx.focus_handle(),
+            settings_tab: SettingsTab::General,
+            tab_nonce: 0,
+            switch_nonce: [0; 2],
+            launch_at_login: crate::prefs::autostart::enabled(),
+            mic_test: None,
+            mic_level: 0.,
+            mic_devices: Vec::new(),
+            default_mic: None,
+            mic_nonce: 0,
+            style_nonce: 0,
             _appearance: appearance,
+        }
+        .with_saved_model(cx)
+    }
+
+    fn with_saved_model(mut self, cx: &mut Context<Self>) -> Self {
+        let id = prefs(cx).model.clone();
+        if let Some(i) = self.models.iter().position(|m| m.id == id) {
+            self.active_model = i;
+        }
+        self
+    }
+
+    fn set_settings_tab(&mut self, tab: SettingsTab, cx: &mut Context<Self>) {
+        if self.settings_tab != tab {
+            self.settings_tab = tab;
+            self.tab_nonce += 1;
+            if tab == SettingsTab::Audio {
+                // Refresh on entry; plugging a headset in shows up next visit.
+                self.mic_devices = input_device_names();
+                self.default_mic = cpal_default_name();
+            }
+            cx.notify();
+        }
+    }
+
+    /// Keep the Audio tab's test meter running only while it is on screen.
+    fn tick_mic_test(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let visible = self.page == Page::Settings && self.settings_tab == SettingsTab::Audio;
+        if !visible {
+            self.mic_test = None;
+            self.mic_level = 0.;
+            return;
+        }
+        if self.mic_test.is_none() {
+            self.mic_test = MicMeter::start(prefs(cx).mic.as_deref());
+        }
+        if let Some(meter) = &self.mic_test {
+            // -60 dBFS .. -12 dBFS -> 0..1, quick rise, gentle fall.
+            let db = 20. * meter.level().max(1e-6).log10();
+            let target = ((db + 60.) / 48.).clamp(0., 1.);
+            let k = if target > self.mic_level { 0.5 } else { 0.12 };
+            self.mic_level += (target - self.mic_level) * k;
+            window.request_animation_frame();
         }
     }
 
@@ -161,6 +232,8 @@ impl MainWindow {
             self.dot_nonce += 1;
         }
         self.active_model = index;
+        let id = self.models[index].id.to_string();
+        update_prefs(cx, |p| p.model = id);
         cx.notify();
     }
 }
@@ -171,8 +244,10 @@ impl Render for MainWindow {
             crate::app_icon::apply(window);
             self.icon_applied = true;
         }
+        self.tick_mic_test(window, cx);
         let t = theme(cx);
         let content = match self.page {
+            Page::Style => self.render_style(cx).into_any_element(),
             Page::Home => self.render_home(cx).into_any_element(),
             Page::Settings => self.render_settings_page(cx).into_any_element(),
             Page::Dictionary => self.render_dictionary(window, cx).into_any_element(),
@@ -234,4 +309,9 @@ impl Render for MainWindow {
             .when(self.shortcut_dialog, |el| el.child(self.shortcut_dialog(t, window, cx)))
             .when(self.dict_dialog, |el| el.child(self.dict_dialog(t, window, cx)))
     }
+}
+
+fn cpal_default_name() -> Option<String> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    cpal::default_host().default_input_device()?.name().ok()
 }

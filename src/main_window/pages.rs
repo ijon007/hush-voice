@@ -50,7 +50,7 @@ impl MainWindow {
     pub(super) fn render_settings_page(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme(cx);
         page()
-            .child(page_header(t, "Settings", "Model, hotkey and appearance"))
+            .child(page_header(t, "Settings", "How Hush starts, listens and looks"))
             .child(self.render_settings(cx))
     }
 

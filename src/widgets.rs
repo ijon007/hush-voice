@@ -147,3 +147,18 @@ pub(crate) fn fade_in<E: IntoElement + Styled + 'static>(
     )
     .into_any_element()
 }
+
+/// cubic-bezier(0.23, 1, 0.32, 1): a strong ease-out for UI motion.
+pub(crate) fn ease_strong(x: f32) -> f32 {
+    let bez = |a: f32, b: f32, t: f32| {
+        let u = 1. - t;
+        3. * u * u * t * a + 3. * u * t * t * b + t * t * t
+    };
+    let x = x.clamp(0., 1.);
+    let (mut lo, mut hi) = (0f32, 1f32);
+    for _ in 0..20 {
+        let mid = (lo + hi) / 2.;
+        if bez(0.23, 0.32, mid) < x { lo = mid } else { hi = mid }
+    }
+    bez(1., 1., (lo + hi) / 2.)
+}
