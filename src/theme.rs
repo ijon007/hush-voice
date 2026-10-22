@@ -63,18 +63,18 @@ pub struct Theme {
 
 /// The app's "black": a warm near-black used as the dark base and as the
 /// primary / selection color in light mode.
-pub const INK: u32 = 0x141210;
+pub const INK: u32 = 0x131211;
 
 impl Theme {
     pub const LIGHT: Theme = Theme {
-        bg: hex(0xece7df),
+        bg: hex(0xf3f0eb),
         panel: hex(0xfbf9f6),
         surface: hex(0xffffff),
         surface_hover: hex(0xfcfaf7),
         surface_selected: hex(0xf6f2ec),
         surface_active: hex(0xf1ece5),
-        nav_hover: hex(0xf2eee8),
-        nav_selected: hex(0xdfd9d0),
+        nav_hover: hex(0xebe7e1),
+        nav_selected: hex(0xe3ded6),
         track: hex(0xefeae3),
         input_bg: hex(0xffffff),
         border: hex(0xe7e1d8),
@@ -91,23 +91,23 @@ impl Theme {
 
     pub const DARK: Theme = Theme {
         bg: hex(INK),
-        panel: hex(0x1f1d1a),
-        surface: hex(0x262420),
-        surface_hover: hex(0x2a2824),
-        surface_selected: hex(0x302d29),
-        surface_active: hex(0x34312c),
-        nav_hover: hex(0x1b1916),
-        nav_selected: hex(0x262320),
-        track: hex(0x1a1815),
-        input_bg: hex(0x2e2b27),
-        border: hex(0x312e2a),
-        border_strong: hex(0x3d3934),
-        text: hex(0xf2eee8),
-        text_secondary: hex(0xa8a199),
-        text_muted: hex(0x857e76),
-        primary: hex(0xf2eee8),
+        panel: hex(0x1d1c1a),
+        surface: hex(0x252422),
+        surface_hover: hex(0x292826),
+        surface_selected: hex(0x2f2e2b),
+        surface_active: hex(0x343330),
+        nav_hover: hex(0x1a1918),
+        nav_selected: hex(0x252422),
+        track: hex(0x191817),
+        input_bg: hex(0x2c2b29),
+        border: hex(0x302f2c),
+        border_strong: hex(0x3c3a37),
+        text: hex(0xf0eeeb),
+        text_secondary: hex(0xa3a09b),
+        text_muted: hex(0x82807b),
+        primary: hex(0xf0eeeb),
         primary_text: hex(INK),
-        primary_active: hex(0xdcd6cd),
+        primary_active: hex(0xd9d6d1),
         close_hover: hex(0xc42b1c),
         close_active: hex(0xa52318),
     };

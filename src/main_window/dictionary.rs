@@ -396,7 +396,7 @@ impl MainWindow {
             .flex()
             .items_center()
             .justify_center()
-            .bg(rgba(0x1412105c))
+            .bg(rgba(0x1312115c))
             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
                 this.dismiss_dict_dialog(window, cx);
             }))
