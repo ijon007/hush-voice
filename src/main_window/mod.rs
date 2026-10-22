@@ -266,6 +266,7 @@ impl Render for MainWindow {
         } else {
             div()
                 .w_full()
+                .min_w(px(0.))
                 .child(content)
                 .with_animation(
                     ("page", self.nav_count),
@@ -294,6 +295,9 @@ impl Render for MainWindow {
                         // Inset content panel.
                         div()
                             .flex_1()
+                            // Flex items default to min-content width; without this a
+                            // long transcript widens the panel past the window.
+                            .min_w(px(0.))
                             .h_full()
                             .pr(px(8.))
                             .pb(px(8.))
@@ -302,6 +306,7 @@ impl Render for MainWindow {
                                 div()
                                     .id("main-content")
                                     .size_full()
+                                    .min_w(px(0.))
                                     .rounded(px(12.))
                                     .bg(t.panel)
                                     .px(px(28.))

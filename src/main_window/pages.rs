@@ -28,7 +28,7 @@ pub(super) fn page_header(t: Theme, title: &'static str, subtitle: &'static str)
 }
 
 pub(super) fn page() -> gpui::Div {
-    div().flex().flex_col().w_full()
+    div().flex().flex_col().w_full().min_w(px(0.))
 }
 
 impl MainWindow {
@@ -163,9 +163,14 @@ impl MainWindow {
                     .gap(px(4.))
                     .child(
                         div()
+                            .w_full()
+                            .min_w(px(0.))
+                            .overflow_hidden()
                             .text_size(px(14.))
                             .text_color(t.text)
                             .line_height(px(20.))
+                            // Long dictations wrap, capped at 3 lines.
+                            .line_clamp(3)
                             .child(row.text.clone()),
                     )
                     .child(
