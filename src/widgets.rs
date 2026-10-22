@@ -5,7 +5,7 @@ use gpui::{
     prelude::*, px, rgb,
 };
 
-use crate::theme::{RADIUS_PX, RADIUS_SM_PX, Theme};
+use crate::theme::{RADIUS_PX, Theme};
 
 pub(crate) fn window_btn(
     t: Theme,
@@ -76,22 +76,6 @@ pub(crate) fn selection_dot(t: Theme, selected: bool, anim_key: usize) -> impl I
                     ),
             )
         })
-}
-
-pub(crate) fn primary_button(t: Theme, label: &'static str, id: &'static str) -> impl IntoElement {
-    div()
-        .id(id)
-        .px(px(16.))
-        .py(px(9.))
-        .rounded(px(RADIUS_SM_PX))
-        .bg(t.primary)
-        .text_color(t.primary_text)
-        .text_size(px(13.))
-        .font_weight(FontWeight::MEDIUM)
-        .hover(move |s| s.bg(t.primary_active))
-        .active(|s| s.opacity(0.92))
-        .cursor_pointer()
-        .child(label)
 }
 
 /// Grouped card surface used by lists and placeholders.

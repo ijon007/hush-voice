@@ -6,6 +6,9 @@ mod shortcuts;
 mod sidebar;
 mod style;
 
+pub(crate) use dictionary::load_words;
+pub(crate) use shortcuts::load_shortcuts;
+
 use std::time::Duration;
 
 use gpui::{
@@ -13,7 +16,7 @@ use gpui::{
     Window, div, ease_out_quint, prelude::*, px,
 };
 
-use crate::models::{ModelOption, Page, Shortcut, TranscriptRow, sample_history};
+use crate::models::{Page, Shortcut, TranscriptRow};
 use crate::overlay::audio::{MicMeter, input_device_names};
 use crate::prefs::{prefs, update_prefs};
 use crate::theme::theme;
@@ -21,8 +24,6 @@ use settings::SettingsTab;
 
 pub(crate) struct MainWindow {
     page: Page,
-    models: Vec<ModelOption>,
-    active_model: usize,
     hotkey: SharedString,
     history: Vec<TranscriptRow>,
     /// History row whose text was just copied (shows a check for ~1.2s).
@@ -72,7 +73,11 @@ pub(crate) struct MainWindow {
     /// Bumped on tab switch so the body cross-fades.
     tab_nonce: usize,
     /// Per-switch animation keys: [launch at login, sound cues].
-    switch_nonce: [usize; 2],
+    switch_nonce: [usize; 3],
+    /// Model downloads in flight, by model id.
+    downloads: std::collections::HashMap<&'static str, std::sync::Arc<crate::engine::Download>>,
+    /// "Clear history" is waiting for a second click.
+    clear_confirm: bool,
     /// Cached HKCU Run key state.
     launch_at_login: bool,
     /// Live meter while the Audio tab is open; dropped (mic released) otherwise.
@@ -91,26 +96,8 @@ impl MainWindow {
         let appearance = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
         Self {
             page: Page::Home,
-            models: vec![
-                ModelOption {
-                    id: "whisper-local",
-                    name: "Whisper Local".into(),
-                    detail: "On-device \u{00b7} fast \u{00b7} private".into(),
-                },
-                ModelOption {
-                    id: "whisper-large",
-                    name: "Whisper Large".into(),
-                    detail: "Higher accuracy \u{00b7} slower".into(),
-                },
-                ModelOption {
-                    id: "cloud-stt",
-                    name: "Cloud STT".into(),
-                    detail: "Lowest latency \u{00b7} requires network".into(),
-                },
-            ],
-            active_model: 0,
             hotkey: "Ctrl + Space".into(),
-            history: sample_history(),
+            history: Vec::new(),
             copied: None,
             icon_applied: false,
             copy_nonce: 0,
@@ -146,7 +133,9 @@ impl MainWindow {
             dict_word_focus: cx.focus_handle(),
             settings_tab: SettingsTab::General,
             tab_nonce: 0,
-            switch_nonce: [0; 2],
+            switch_nonce: [0; 3],
+            downloads: Default::default(),
+            clear_confirm: false,
             launch_at_login: crate::prefs::autostart::enabled(),
             mic_test: None,
             mic_level: 0.,
@@ -156,15 +145,38 @@ impl MainWindow {
             style_nonce: 0,
             _appearance: appearance,
         }
-        .with_saved_model(cx)
     }
 
-    fn with_saved_model(mut self, cx: &mut Context<Self>) -> Self {
-        let id = prefs(cx).model.clone();
-        if let Some(i) = self.models.iter().position(|m| m.id == id) {
-            self.active_model = i;
+    pub(super) fn start_model_download(&mut self, m: crate::engine::ModelInfo, cx: &mut Context<Self>) {
+        if self.downloads.get(m.id).is_some_and(|d| d.running()) {
+            return;
         }
-        self
+        let dl = crate::engine::start_download(m);
+        self.downloads.insert(m.id, dl.clone());
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            while dl.running() {
+                Timer::after(Duration::from_millis(120)).await;
+                let _ = this.update(cx, |_, cx| cx.notify());
+            }
+            let ok = dl.status.load(std::sync::atomic::Ordering::Relaxed) == 1;
+            let _ = this.update(cx, |this, cx| {
+                this.downloads.remove(m.id);
+                // First model in: use it straight away.
+                let p = prefs(cx).clone();
+                if ok && crate::engine::resolve(&p.model, p.custom_model.as_deref()).is_none() {
+                    this.dot_nonce += 1;
+                    update_prefs(cx, |p| p.model = m.id.to_string());
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub(super) fn open_model_settings(&mut self, cx: &mut Context<Self>) {
+        self.set_page(Page::Settings, cx);
+        self.set_settings_tab(SettingsTab::Dictation, cx);
     }
 
     fn set_settings_tab(&mut self, tab: SettingsTab, cx: &mut Context<Self>) {
@@ -192,6 +204,8 @@ impl MainWindow {
             self.mic_test = MicMeter::start(prefs(cx).mic.as_deref());
         }
         if let Some(meter) = &self.mic_test {
+            // The test meter never transcribes: drop what it captured.
+            let _ = meter.take_samples();
             // -60 dBFS .. -12 dBFS -> 0..1, quick rise, gentle fall.
             let db = 20. * meter.level().max(1e-6).log10();
             let target = ((db + 60.) / 48.).clamp(0., 1.);
@@ -227,15 +241,6 @@ impl MainWindow {
         .detach();
     }
 
-    fn select_model(&mut self, index: usize, cx: &mut Context<Self>) {
-        if self.active_model != index {
-            self.dot_nonce += 1;
-        }
-        self.active_model = index;
-        let id = self.models[index].id.to_string();
-        update_prefs(cx, |p| p.model = id);
-        cx.notify();
-    }
 }
 
 impl Render for MainWindow {
@@ -245,6 +250,7 @@ impl Render for MainWindow {
             self.icon_applied = true;
         }
         self.tick_mic_test(window, cx);
+        self.history = crate::history::rows(cx);
         let t = theme(cx);
         let content = match self.page {
             Page::Style => self.render_style(cx).into_any_element(),

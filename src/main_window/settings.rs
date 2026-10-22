@@ -6,8 +6,9 @@ use gpui::{
 };
 
 use crate::main_window::MainWindow;
-use crate::models::{ModelOption, Page};
-use crate::prefs::{OverlayPosition, autostart, prefs, update_prefs};
+use crate::engine;
+use crate::models::Page;
+use crate::prefs::{KeepHistory, OverlayPosition, autostart, prefs, update_prefs};
 use crate::theme::{RADIUS_PX, RADIUS_SM_PX, Theme, ThemeMode, set_theme_mode, theme, theme_mode};
 use crate::widgets::{card, ease_strong, section_label, selection_dot};
 
@@ -129,6 +130,26 @@ fn switch(t: Theme, id: &'static str, on: bool, nonce: usize) -> gpui::Stateful<
         .cursor_pointer()
         .active(|s| s.opacity(0.85))
         .child(knob)
+}
+
+/// Quiet bordered button for secondary actions.
+pub(super) fn outline_button(t: Theme, id: impl Into<gpui::ElementId>, label: &'static str) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .h(px(30.))
+        .px(px(12.))
+        .flex()
+        .items_center()
+        .rounded(px(RADIUS_SM_PX))
+        .border_1()
+        .border_color(t.border_strong)
+        .text_size(px(13.))
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(t.text)
+        .hover(move |s| s.bg(t.surface_hover))
+        .active(|s| s.opacity(0.8))
+        .cursor_pointer()
+        .child(label)
 }
 
 /// Small segmented control: the selected option sits on a raised surface.
@@ -273,6 +294,77 @@ impl MainWindow {
                     ),
                 ],
             ))
+            .child(self.render_history_settings(t, cx))
+    }
+
+    fn render_history_settings(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
+        let keep = prefs(cx).keep_history;
+        let count = cx.global::<crate::history::History>().0.len();
+        let clear: AnyElement = if self.clear_confirm {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(outline_button(t, "clear-cancel", "Cancel").on_click(cx.listener(
+                    |this, _, _, cx| {
+                        this.clear_confirm = false;
+                        cx.notify();
+                    },
+                )))
+                .child(
+                    outline_button(t, "clear-confirm", "Clear all")
+                        .text_color(t.close_hover)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.clear_confirm = false;
+                            crate::history::clear(cx);
+                        })),
+                )
+                .into_any_element()
+        } else {
+            outline_button(t, "clear-history", "Clear\u{2026}")
+                .when(count == 0, |el| el.opacity(0.5))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if count > 0 {
+                        this.clear_confirm = true;
+                        cx.notify();
+                    }
+                }))
+                .into_any_element()
+        };
+        let clear_detail: SharedString = if self.clear_confirm {
+            format!("Delete all {count} dictations? This can't be undone").into()
+        } else if count == 0 {
+            "Nothing saved yet".into()
+        } else {
+            format!("{count} dictations saved on this PC").into()
+        };
+        group(
+            t,
+            "History",
+            vec![
+                setting_row(
+                    t,
+                    "Keep history",
+                    "Older dictations are deleted automatically",
+                    segmented(
+                        t,
+                        "keep-history",
+                        &[
+                            (KeepHistory::Forever, "Forever"),
+                            (KeepHistory::Days30, "30 days"),
+                            (KeepHistory::Days7, "7 days"),
+                        ],
+                        keep,
+                        |keep, _, cx| {
+                            update_prefs(cx, |p| p.keep_history = keep);
+                            crate::history::apply_retention(cx, keep);
+                        },
+                    ),
+                    true,
+                ),
+                setting_row(t, "Clear history", clear_detail, clear, false),
+            ],
+        )
     }
 
     fn render_audio(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
@@ -381,44 +473,74 @@ impl MainWindow {
     }
 
     fn render_dictation(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
-        let style = match prefs(cx).style {
+        let p = prefs(cx).clone();
+        let style = match p.style {
             crate::prefs::Style::Formal => "Formal",
             crate::prefs::Style::Casual => "Casual",
             crate::prefs::Style::Verbatim => "Verbatim",
         };
-        div()
+        // Language only matters for multilingual models.
+        let multilingual = match engine::resolve(&p.model, p.custom_model.as_deref()) {
+            Some(path) => !engine::is_english_only(&path),
+            None => engine::model_info(&p.model).is_some_and(|m| !m.english_only),
+        };
+        let entity = cx.entity();
+        let mut groups = div()
             .flex()
             .flex_col()
             .gap(px(24.))
-            .child(group(t, "Model", vec![self.render_model_list(t, cx).into_any_element()]))
-            .child(group(
+            .child(group(t, "Model", vec![self.render_model_list(t, cx).into_any_element()]));
+        if multilingual {
+            let langs: [(&'static str, &'static str); 5] = [
+                ("auto", "Auto"),
+                ("en", "English"),
+                ("es", "Spanish"),
+                ("fr", "French"),
+                ("de", "German"),
+            ];
+            let current: &'static str =
+                langs.iter().find(|(code, _)| *code == p.language).map(|(c, _)| *c).unwrap_or("auto");
+            groups = groups.child(group(
                 t,
-                "Output",
+                "Language",
                 vec![setting_row(
+                    t,
+                    "Spoken language",
+                    "Auto-detect works for most; pick one if it guesses wrong",
+                    segmented(t, "lang", &langs, current, move |code, _, cx| {
+                        update_prefs(cx, |p| p.language = code.to_string());
+                        entity.update(cx, |_, cx| cx.notify());
+                    }),
+                    false,
+                )],
+            ));
+        }
+        groups.child(group(
+            t,
+            "Output",
+            vec![
+                setting_row(
+                    t,
+                    "Paste automatically",
+                    "Type into the app you're using. Off: copy to the clipboard only",
+                    switch(t, "sw-paste", p.paste, self.switch_nonce[2]).on_click(cx.listener(
+                        |this, _, _, cx| {
+                            this.switch_nonce[2] += 1;
+                            update_prefs(cx, |p| p.paste = !p.paste);
+                        },
+                    )),
+                    true,
+                ),
+                setting_row(
                     t,
                     "Writing style",
                     format!("{style} \u{00b7} how your words read once typed"),
-                    div()
-                        .id("open-style")
-                        .h(px(30.))
-                        .px(px(12.))
-                        .flex()
-                        .items_center()
-                        .gap(px(4.))
-                        .rounded(px(RADIUS_SM_PX))
-                        .border_1()
-                        .border_color(t.border_strong)
-                        .text_size(px(13.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(t.text)
-                        .hover(move |s| s.bg(t.surface_hover))
-                        .active(|s| s.opacity(0.8))
-                        .cursor_pointer()
-                        .child("Change")
+                    outline_button(t, "open-style", "Change")
                         .on_click(cx.listener(|this, _, _, cx| this.set_page(Page::Style, cx))),
                     false,
-                )],
-            ))
+                ),
+            ],
+        ))
     }
 
     fn render_appearance(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
@@ -481,11 +603,12 @@ impl MainWindow {
     }
 
     fn render_model_list(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
-        let last = self.models.len().saturating_sub(1);
+        let p = prefs(cx).clone();
         let mut rows = Vec::new();
-        for (index, model) in self.models.iter().enumerate() {
-            rows.push(self.model_row(t, index, model, index < last, cx).into_any_element());
+        for (index, m) in engine::MODELS.iter().enumerate() {
+            rows.push(self.model_row(t, index, *m, &p.model, cx));
         }
+        rows.push(self.custom_model_row(t, &p, cx));
         div().flex().flex_col().children(rows)
     }
 
@@ -493,47 +616,169 @@ impl MainWindow {
         &self,
         t: Theme,
         index: usize,
-        model: &ModelOption,
-        show_divider: bool,
+        m: engine::ModelInfo,
+        current: &str,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let selected = self.active_model == index;
+    ) -> AnyElement {
+        let installed = engine::is_installed(&m);
+        let selected = installed && current == m.id;
+        let download = self.downloads.get(m.id).filter(|d| d.running()).cloned();
+        let control: AnyElement = if let Some(dl) = download {
+            let pct = dl.progress().clamp(0., 1.);
+            div()
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .child(
+                    div()
+                        .w(px(96.))
+                        .h(px(4.))
+                        .rounded_full()
+                        .bg(t.track)
+                        .child(div().h_full().w(px(96. * pct)).rounded_full().bg(t.primary)),
+                )
+                .child(
+                    div()
+                        .w(px(34.))
+                        .text_size(px(12.))
+                        .text_color(t.text_secondary)
+                        .child(format!("{:.0}%", pct * 100.)),
+                )
+                .child(
+                    div()
+                        .id(("cancel-dl", index))
+                        .size(px(22.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded_full()
+                        .hover(move |s| s.bg(t.surface_hover))
+                        .active(|s| s.opacity(0.7))
+                        .cursor_pointer()
+                        .child(svg().path("icons/x.svg").size(px(10.)).text_color(t.text_secondary))
+                        .on_click(move |_, _, cx| {
+                            cx.stop_propagation();
+                            dl.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                        }),
+                )
+                .into_any_element()
+        } else if installed {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(14.))
+                .child(
+                    div()
+                        .id(("delete-model", index))
+                        .text_size(px(12.))
+                        .text_color(t.text_muted)
+                        .hover(move |s| s.text_color(t.text))
+                        .active(|s| s.opacity(0.7))
+                        .cursor_pointer()
+                        .child("Delete")
+                        .on_click(cx.listener(move |_, _, _, cx| {
+                            cx.stop_propagation();
+                            engine::delete_model(&m);
+                            cx.notify();
+                        })),
+                )
+                .child(selection_dot(t, selected, self.dot_nonce))
+                .into_any_element()
+        } else {
+            outline_button(t, ("download", index), "Download")
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.start_model_download(m, cx);
+                }))
+                .into_any_element()
+        };
         div()
-            .id(model.id)
+            .id(("model", index))
             .flex()
             .items_center()
-            .justify_between()
+            .gap(px(24.))
             .px(px(16.))
             .py(px(14.))
             // GPUI doesn't clip child fills to the card radius: round the ends.
             .when(index == 0, |el| el.rounded_t(px(RADIUS_PX - 1.)))
-            .when(!show_divider, |el| el.rounded_b(px(RADIUS_PX - 1.)))
-            .when(show_divider, |el| el.border_b_1().border_color(t.border))
+            .border_b_1()
+            .border_color(t.border)
             .when(selected, |el| el.bg(t.surface_selected))
-            .when(!selected, |el| el.hover(move |s| s.bg(t.surface_hover)))
-            .active(move |s| s.bg(t.surface_active))
-            .cursor_pointer()
+            .when(installed && !selected, |el| {
+                el.hover(move |s| s.bg(t.surface_hover))
+                    .active(move |s| s.bg(t.surface_active))
+                    .cursor_pointer()
+            })
+            .child(row_text(t, m.name, format!("{} \u{00b7} {} MB", m.detail, m.size_mb)))
+            .child(div().flex_none().child(control))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                if engine::is_installed(&m) && prefs(cx).model != m.id {
+                    this.dot_nonce += 1;
+                    update_prefs(cx, |p| p.model = m.id.to_string());
+                }
+            }))
+            .into_any_element()
+    }
+
+    fn custom_model_row(&self, t: Theme, p: &crate::prefs::Prefs, cx: &mut Context<Self>) -> AnyElement {
+        let path = p.custom_model.clone().filter(|f| std::path::Path::new(f).is_file());
+        let selected = path.is_some() && p.model == engine::CUSTOM_ID;
+        let detail: SharedString = match &path {
+            Some(f) => std::path::Path::new(f)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+                .into(),
+            None => "Advanced \u{00b7} use your own whisper.cpp .bin file".into(),
+        };
+        let has_path = path.is_some();
+        div()
+            .id("model-custom")
+            .flex()
+            .items_center()
+            .gap(px(24.))
+            .px(px(16.))
+            .py(px(14.))
+            .rounded_b(px(RADIUS_PX - 1.))
+            .when(selected, |el| el.bg(t.surface_selected))
+            .when(has_path && !selected, |el| {
+                el.hover(move |s| s.bg(t.surface_hover))
+                    .active(move |s| s.bg(t.surface_active))
+                    .cursor_pointer()
+            })
+            .child(row_text(t, "Custom model file", detail))
             .child(
                 div()
+                    .flex_none()
                     .flex()
-                    .flex_col()
-                    .gap(px(2.))
-                    .child(
-                        div()
-                            .text_size(px(14.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(t.text)
-                            .child(model.name.clone()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(t.text_muted)
-                            .child(model.detail.clone()),
-                    ),
+                    .items_center()
+                    .gap(px(14.))
+                    .child(outline_button(t, "choose-model", "Choose\u{2026}").on_click(cx.listener(
+                        |this, _, _, cx| {
+                            cx.stop_propagation();
+                            let picked = rfd::FileDialog::new()
+                                .set_title("Choose a whisper.cpp model")
+                                .add_filter("Whisper model", &["bin"])
+                                .pick_file();
+                            if let Some(file) = picked {
+                                this.dot_nonce += 1;
+                                let file = file.to_string_lossy().into_owned();
+                                update_prefs(cx, move |p| {
+                                    p.custom_model = Some(file);
+                                    p.model = engine::CUSTOM_ID.to_string();
+                                });
+                            }
+                        },
+                    )))
+                    .when(has_path, |el| el.child(selection_dot(t, selected, self.dot_nonce))),
             )
-            .child(selection_dot(t, selected, self.dot_nonce))
-            .on_click(cx.listener(move |this, _, _, cx| this.select_model(index, cx)))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                if has_path && prefs(cx).model != engine::CUSTOM_ID {
+                    this.dot_nonce += 1;
+                    update_prefs(cx, |p| p.model = engine::CUSTOM_ID.to_string());
+                }
+            }))
+            .into_any_element()
     }
 
     fn render_hotkey(&self, t: Theme) -> impl IntoElement {
