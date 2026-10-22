@@ -269,72 +269,70 @@ fn meta_pill(t: Theme, icon: Option<&'static str>, label: SharedString) -> impl 
         .child(label)
 }
 
-/// One stat card: icon tile, big number (+ muted unit), label underneath.
-/// Identical structure in every card so the baselines line up.
+/// One stat card: label, big number (+ muted unit), and a small footer
+/// visual. Identical structure in every card so the baselines line up.
 fn stat_cell(
     t: Theme,
-    icon: &'static str,
+    label: &'static str,
     value: String,
     unit: Option<&'static str>,
-    label: &'static str,
+    footer: impl IntoElement,
 ) -> impl IntoElement {
     card(t)
         .flex_1()
         .min_w(px(0.))
-        .gap(px(14.))
         .px(px(18.))
-        .pt(px(16.))
+        .pt(px(14.))
         .pb(px(16.))
         .child(
             div()
-                .flex()
-                .items_center()
-                .justify_center()
-                .size(px(30.))
-                .rounded(px(crate::theme::RADIUS_SM_PX))
-                .bg(t.surface_selected)
-                .border_1()
-                .border_color(t.border)
-                .child(svg().path(icon).size(px(15.)).text_color(t.text_secondary)),
+                .text_size(px(12.))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(t.text_muted)
+                .truncate()
+                .child(label),
         )
         .child(
             div()
                 .flex()
-                .flex_col()
-                .gap(px(2.))
+                .items_baseline()
+                .gap(px(4.))
+                .h(px(40.))
                 .child(
                     div()
-                        .flex()
-                        .items_baseline()
-                        .gap(px(4.))
-                        .h(px(34.))
-                        .child(
-                            div()
-                                .text_size(px(28.))
-                                .line_height(px(34.))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(t.text)
-                                .child(value),
-                        )
-                        .when_some(unit, |el, unit| {
-                            el.child(
-                                div()
-                                    .text_size(px(13.))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(t.text_muted)
-                                    .child(unit),
-                            )
-                        }),
+                        .text_size(px(30.))
+                        .line_height(px(40.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(t.text)
+                        .child(value),
                 )
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(t.text_muted)
-                        .truncate()
-                        .child(label),
-                ),
+                .when_some(unit, |el, unit| {
+                    el.child(
+                        div()
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(t.text_muted)
+                            .child(unit),
+                    )
+                }),
         )
+        .child(div().mt(px(10.)).h(px(18.)).flex().items_end().child(footer))
+}
+
+/// Seven thin columns, oldest to today; `level` is 0..=1 per day.
+fn week_bars(t: Theme, levels: [f32; 7], min_h: f32) -> impl IntoElement {
+    div().flex().items_end().gap(px(3.)).h_full().children(levels.into_iter().enumerate().map(
+        move |(i, level)| {
+            let h = if level > 0. { min_h + (18. - min_h) * level } else { 3. };
+            div().w(px(6.)).h(px(h)).rounded(px(2.)).bg(if level == 0. {
+                t.border
+            } else if i == 6 {
+                t.text
+            } else {
+                t.text_muted
+            })
+        },
+    ))
 }
 
 fn group_thousands(n: usize) -> String {
@@ -353,17 +351,38 @@ impl MainWindow {
     fn render_stats(&self, t: Theme) -> impl IntoElement {
         let stats = compute_stats(&self.history);
         let streak_unit = if stats.streak_days == 1 { "day" } else { "days" };
+        let peak = stats.week.iter().copied().max().unwrap_or(0).max(1) as f32;
+        let words = stats.week.map(|w| w as f32 / peak);
+        let active = stats.week.map(|w| if w > 0 { 1. } else { 0. });
+        // ponytail: 40 wpm is the commonly cited average typing speed.
+        let vs_typing = if stats.wpm > 0 {
+            format!("{:.1}× faster than typing", stats.wpm as f32 / 40.)
+        } else {
+            "Dictate to measure".into()
+        };
         let grouped = div()
             .flex()
             .gap(px(12.))
-            .child(stat_cell(t, "icons/bolt.svg", stats.wpm.to_string(), Some("wpm"), "Average speed"))
-            .child(stat_cell(t, "icons/text.svg", group_thousands(stats.total_words), None, "Words dictated"))
             .child(stat_cell(
                 t,
-                "icons/flame.svg",
+                "Average speed",
+                stats.wpm.to_string(),
+                Some("wpm"),
+                div().text_size(px(12.)).text_color(t.text_secondary).child(vs_typing),
+            ))
+            .child(stat_cell(
+                t,
+                "Words dictated",
+                group_thousands(stats.total_words),
+                None,
+                week_bars(t, words, 5.),
+            ))
+            .child(stat_cell(
+                t,
+                "Current streak",
                 stats.streak_days.to_string(),
                 Some(streak_unit),
-                "Current streak",
+                week_bars(t, active, 18.),
             ));
         let wrap = div().pb(px(28.));
         // First show only: the stats card rises in once.
