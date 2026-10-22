@@ -2,6 +2,7 @@
 mod app_icon;
 mod crashlog;
 mod assets;
+mod chord;
 mod hotkey;
 mod main_window;
 mod models;
