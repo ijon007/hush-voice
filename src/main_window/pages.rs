@@ -186,22 +186,16 @@ impl MainWindow {
                             .line_clamp(3)
                             .child(row.text.clone()),
                     )
-                    .child({
-                        let words = row.words();
+                    .child(
                         div()
                             .flex()
                             .flex_wrap()
                             .items_center()
                             .gap(px(6.))
                             .pt(px(2.))
-                            .child(meta_pill(
-                                t,
-                                Some("icons/text.svg"),
-                                format!("{words} {}", if words == 1 { "word" } else { "words" }).into(),
-                            ))
-                            .when(row.seconds > 0., |el| el.child(meta_pill(t, None, row.duration_label())))
-                            .child(meta_pill(t, None, row.model.clone()))
-                    }),
+                            .when(row.seconds > 0., |el| el.child(meta_pill(t, row.duration_label())))
+                            .child(meta_pill(t, row.model.clone())),
+                    ),
             )
             .child(
                 // Slot is always reserved; the button fades in on row hover.
@@ -251,7 +245,7 @@ impl MainWindow {
 }
 
 /// Small rounded metadata badge under a transcript.
-fn meta_pill(t: Theme, icon: Option<&'static str>, label: SharedString) -> impl IntoElement {
+fn meta_pill(t: Theme, label: SharedString) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -265,7 +259,6 @@ fn meta_pill(t: Theme, icon: Option<&'static str>, label: SharedString) -> impl 
         .text_size(px(11.))
         .font_weight(FontWeight::MEDIUM)
         .text_color(t.text_secondary)
-        .when_some(icon, |el, i| el.child(svg().path(i).size(px(11.)).text_color(t.text_muted)))
         .child(label)
 }
 
