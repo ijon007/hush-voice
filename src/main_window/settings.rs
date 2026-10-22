@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use gpui::{
     Animation, AnimationExt, AnyElement, Context, FontWeight, KeyDownEvent, MouseButton,
-    SharedString, Window, div, prelude::*, px, svg,
+    ModifiersChangedEvent, SharedString, Window, div, prelude::*, px, svg,
 };
 
 use crate::chord::{Chord, HotkeySlot};
@@ -926,15 +926,26 @@ impl MainWindow {
                     .flex_wrap()
                     .cursor_pointer()
                     .track_focus(focus)
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.begin_hotkey_edit(slot, window, cx)
-                    }))
+                    // Mouse-down, not click: a focused GPUI button treats Space/Enter
+                    // key-up as a click, which would restart capture and wipe the draft.
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.begin_hotkey_edit(slot, window, cx);
+                        }),
+                    )
                     .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                         if this.hotkey_edit != Some(slot) {
                             return;
                         }
                         this.on_hotkey_key(event, window, cx);
+                    }))
+                    .on_modifiers_changed(cx.listener(move |this, event: &ModifiersChangedEvent, _, cx| {
+                        if this.hotkey_edit != Some(slot) {
+                            return;
+                        }
+                        this.on_hotkey_modifiers(event, cx);
                     }))
                     .when(empty && editing, |el| {
                         el.child(
@@ -1032,6 +1043,15 @@ impl MainWindow {
             ks.modifiers.platform,
             &ks.key,
         );
+        window.prevent_default();
+        cx.stop_propagation();
+        cx.notify();
+    }
+
+    fn on_hotkey_modifiers(&mut self, event: &ModifiersChangedEvent, cx: &mut Context<Self>) {
+        let m = event.modifiers;
+        self.hotkey_draft =
+            Chord::capture_modifiers(self.hotkey_draft.clone(), m.control, m.alt, m.shift, m.platform);
         cx.stop_propagation();
         cx.notify();
     }

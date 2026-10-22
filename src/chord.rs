@@ -64,6 +64,13 @@ impl Chord {
         chord
     }
 
+    /// Windows fires modifier keys as ModifiersChanged, not KeyDown.
+    /// All-keys-up must not wipe the last combo (the recorder is sticky until confirm).
+    pub(crate) fn capture_modifiers(prev: Self, ctrl: bool, alt: bool, shift: bool, win: bool) -> Self {
+        let next = Self { ctrl, alt, shift, win, key: None };
+        if next.is_empty() { prev } else { next }
+    }
+
     pub(crate) fn labels(&self) -> Vec<String> {
         let mut out = Vec::new();
         if self.ctrl {
@@ -216,6 +223,16 @@ mod tests {
         assert!(empty.ctrl && empty.key.is_none());
         let hold = Chord::from_keystroke(true, false, false, false, "space");
         assert_eq!(hold.display(), "Ctrl + Space");
+    }
+
+    #[test]
+    fn capture_modifiers_records_modifier_only_and_keeps_it_on_release() {
+        let mut draft = Chord::default();
+        draft = Chord::capture_modifiers(draft, true, false, false, false);
+        draft = Chord::capture_modifiers(draft, true, true, false, true);
+        assert_eq!(draft.display(), "Ctrl + Win + Alt");
+        draft = Chord::capture_modifiers(draft, false, false, false, false);
+        assert_eq!(draft.display(), "Ctrl + Win + Alt");
     }
 
     #[test]
