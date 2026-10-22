@@ -6,6 +6,13 @@ use gpui::{AssetSource, Result, SharedString};
 
 pub(crate) struct Assets;
 
+/// Instrument Sans, latin subset, registered with the text system at startup.
+pub(crate) const FONTS: &[&[u8]] = &[
+    include_bytes!("../assets/fonts/InstrumentSans-400.ttf"),
+    include_bytes!("../assets/fonts/InstrumentSans-500.ttf"),
+    include_bytes!("../assets/fonts/InstrumentSans-600.ttf"),
+];
+
 const FILES: &[(&str, &[u8])] = &[
     ("icons/home.svg", include_bytes!("../assets/icons/home.svg")),
     ("icons/book.svg", include_bytes!("../assets/icons/book.svg")),

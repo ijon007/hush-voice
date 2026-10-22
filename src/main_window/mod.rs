@@ -298,7 +298,7 @@ impl Render for MainWindow {
             .size_full()
             .bg(t.bg)
             .text_color(t.text)
-            .font_family(".SystemUIFont")
+            .font_family("Instrument Sans")
             .child(self.render_titlebar(cx))
             .child(
                 div()

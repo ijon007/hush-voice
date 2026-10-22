@@ -40,6 +40,9 @@ fn main() {
         std::process::exit(cli_download(&args[2]));
     }
     Application::new().with_assets(assets::Assets).run(|cx: &mut App| {
+        cx.text_system()
+            .add_fonts(assets::FONTS.iter().map(|f| std::borrow::Cow::Borrowed(*f)).collect())
+            .expect("embedded fonts load");
         theme::init(cx);
         prefs::init(cx);
         let keep = prefs::prefs(cx).keep_history;
