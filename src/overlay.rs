@@ -3,9 +3,9 @@ mod audio;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    App, Bounds, BoxShadow, Context, Global, Timer, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div, hsla,
-    point, prelude::*, px, rgb, size,
+    App, Bounds, BoxShadow, Context, Corners, Global, Pixels, Timer, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, canvas, div,
+    fill, hsla, point, prelude::*, px, rgb, size, svg,
 };
 
 use crate::theme::Theme;
@@ -44,6 +44,10 @@ pub(crate) struct RecordingPill {
     last_frame: Instant,
     last_roll: Instant,
     level_meter: LevelMeter,
+    /// Entrance start; drives the fade + rise in.
+    opened_at: Instant,
+    /// Set when hiding; drives the quick fade + drop out.
+    closing_at: Option<Instant>,
     #[cfg(debug_assertions)]
     last_log: Instant,
 }
@@ -120,6 +124,8 @@ impl RecordingPill {
             last_frame: now,
             last_roll: now,
             level_meter: LevelMeter::new(),
+            opened_at: now,
+            closing_at: None,
             #[cfg(debug_assertions)]
             last_log: now,
         }
@@ -168,49 +174,117 @@ impl RecordingPill {
     }
 }
 
-/// Voice meter: equal-width rounded bars, flat dots in silence.
-fn meter_bars(bars: &[f32; BAR_COUNT], color: gpui::Rgba) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(BAR_GAP))
-        .h(px(BAR_MAX))
-        .children(bars.iter().map(move |&v| {
-            div()
-                .w(px(BAR_W))
-                .h(px(BAR_MIN + (BAR_MAX - BAR_MIN) * v))
-                .rounded_full()
-                .bg(color)
-        }))
+/// Entrance: 200ms, exit: 120ms.
+const ENTER_MS: f32 = 200.;
+const EXIT_MS: f32 = 120.;
+/// Entrance rises this far (px); exit drops half of it.
+const RISE: f32 = 6.;
+const LOCK_SIZE: f32 = 9.;
+const LOCK_GAP: f32 = 6.;
+const PILL_PAD_X: f32 = 12.;
+
+/// cubic-bezier(0.23, 1, 0.32, 1): strong ease-out.
+fn ease_out(t: f32) -> f32 {
+    cubic_bezier(0.23, 1., 0.32, 1., t.clamp(0., 1.))
 }
 
-/// Small filled padlock (shackle + body) for locked mode.
-fn lock_glyph(color: gpui::Rgba) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_col()
-        .items_center()
-        .flex_none()
-        .child(
-            div()
-                .w(px(4.5))
-                .h(px(3.5))
-                .border_t(px(1.2))
-                .border_l(px(1.2))
-                .border_r(px(1.2))
-                .border_color(color)
-                .rounded_t(px(2.25)),
-        )
-        .child(div().w(px(7.)).h(px(5.)).rounded(px(1.5)).bg(color))
+fn cubic_bezier(x1: f32, y1: f32, x2: f32, y2: f32, x: f32) -> f32 {
+    let bez = |a: f32, b: f32, t: f32| {
+        let u = 1. - t;
+        3. * u * u * t * a + 3. * u * t * t * b + t * t * t
+    };
+    // Solve x(t) = x by bisection (monotonic for 0 <= x1, x2 <= 1).
+    let (mut lo, mut hi) = (0f32, 1f32);
+    for _ in 0..24 {
+        let mid = (lo + hi) / 2.;
+        if bez(x1, x2, mid) < x { lo = mid } else { hi = mid }
+    }
+    bez(y1, y2, (lo + hi) / 2.)
+}
+
+/// Round a logical length to whole device pixels.
+fn snap(v: f32, scale: f32) -> f32 {
+    (v * scale).round() / scale
+}
+
+/// Bar geometry in device pixels, so every bar is identical and crisp at any
+/// DPI (fractional scales otherwise blur 2px bars into uneven 2-3px smears).
+#[derive(Clone, Copy)]
+struct BarMetrics {
+    w: f32,
+    gap: f32,
+    min: f32,
+    max: f32,
+}
+
+impl BarMetrics {
+    fn new(scale: f32) -> Self {
+        let dev = |v: f32| (v * scale).round().max(1.);
+        // Heights even in device px so the vertical center lands on a pixel edge.
+        let even = |v: f32| ((v * scale / 2.).round() * 2.).max(2.);
+        Self {
+            w: dev(BAR_W).max(2.),
+            gap: dev(BAR_GAP),
+            min: even(BAR_MIN),
+            max: even(BAR_MAX),
+        }
+    }
+
+    /// Group width in logical px.
+    fn width(&self, scale: f32) -> f32 {
+        (self.w * BAR_COUNT as f32 + self.gap * (BAR_COUNT as f32 - 1.)) / scale
+    }
+}
+
+/// Voice meter painted as device-pixel-snapped capsules.
+fn meter_bars(bars: [f32; BAR_COUNT], color: gpui::Rgba, m: BarMetrics, scale: f32) -> impl IntoElement {
+    canvas(
+        |_, _, _| (),
+        move |bounds, _, window, _| {
+            let to_dev = |p: Pixels| (p / px(1.)) * scale;
+            let x0 = to_dev(bounds.origin.x).round();
+            let cy = (to_dev(bounds.origin.y) + to_dev(bounds.size.height) / 2.).round();
+            for (i, v) in bars.iter().enumerate() {
+                let h_dev = ((m.min + (m.max - m.min) * v) / 2.).round() * 2.;
+                let x = x0 + i as f32 * (m.w + m.gap);
+                let y = cy - h_dev / 2.;
+                let r = Bounds {
+                    origin: point(px(x / scale), px(y / scale)),
+                    size: size(px(m.w / scale), px(h_dev / scale)),
+                };
+                window.paint_quad(
+                    fill(r, color).corner_radii(Corners::all(px(m.w / scale / 2.))),
+                );
+            }
+        },
+    )
+    .w(px(m.width(scale)))
+    .h(px(m.max / scale))
+    .flex_none()
 }
 
 impl Render for RecordingPill {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let now = Instant::now();
         // Redraw every frame only while a mic is live (window exists = visible).
         if self.meter.is_some() {
             self.tick();
+        }
+        // Entrance / exit progress (1 = fully shown).
+        let enter = ease_out((now - self.opened_at).as_secs_f32() * 1000. / ENTER_MS);
+        let (shown, dy) = match self.closing_at {
+            Some(t0) => {
+                let k = ease_out((now - t0).as_secs_f32() * 1000. / EXIT_MS);
+                let base = enter;
+                (base * (1. - k), RISE / 2. * k)
+            }
+            None => (enter, RISE * (1. - enter)),
+        };
+        let animating = enter < 1. || self.closing_at.is_some();
+        if self.meter.is_some() || animating {
             window.request_animation_frame();
         }
+
         // Always dark, regardless of the app theme.
         let t = Theme::DARK;
         let cream = rgb(0xfaf6f0);
@@ -218,35 +292,50 @@ impl Render for RecordingPill {
             self.shaped = clip_overlay_to_capsule(window);
         }
 
+        let scale = window.scale_factor();
+        let m = BarMetrics::new(scale);
+        let lock_w = if self.locked { snap(LOCK_SIZE, scale) + snap(LOCK_GAP, scale) } else { 0. };
+        let pill_w = snap(PILL_PAD_X * 2. + m.width(scale) + lock_w, scale);
+        let pill_h = snap(PILL_H, scale);
+        let left = snap((OVERLAY_WIDTH - pill_w) / 2., scale);
+        let top = snap((OVERLAY_HEIGHT - pill_h) / 2. + dy, scale);
+
         // Outer transparent canvas; inner material floats with a soft shadow.
-        div()
-            .size_full()
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .gap(px(6.))
-                    .px(px(12.))
-                    .h(px(PILL_H))
-                    // Full capsule: radius = height / 2.
-                    .rounded(px(PILL_H / 2.))
-                    .overflow_hidden()
-                    .bg(t.bg)
-                    .border_1()
-                    .border_color(t.border_strong)
-                    .shadow(vec![BoxShadow {
-                        color: hsla(0.0, 0.0, 0.0, 0.28),
-                        offset: point(px(0.), px(4.)),
-                        blur_radius: px(16.),
-                        spread_radius: px(0.),
-                    }])
-                    .when(self.locked, |el| el.child(lock_glyph(cream)))
-                    .child(meter_bars(&self.bars, cream)),
-            )
+        div().size_full().relative().child(
+            div()
+                .absolute()
+                .left(px(left))
+                .top(px(top))
+                .w(px(pill_w))
+                .h(px(pill_h))
+                .opacity(shown)
+                .flex()
+                .items_center()
+                .px(px(snap(PILL_PAD_X, scale)))
+                .gap(px(snap(LOCK_GAP, scale)))
+                // Full capsule: radius = height / 2.
+                .rounded(px(pill_h / 2.))
+                .overflow_hidden()
+                .bg(t.bg)
+                .border_1()
+                .border_color(t.border_strong)
+                .shadow(vec![BoxShadow {
+                    color: hsla(0.0, 0.0, 0.0, 0.28 * shown),
+                    offset: point(px(0.), px(4.)),
+                    blur_radius: px(16.),
+                    spread_radius: px(0.),
+                }])
+                .when(self.locked, |el| {
+                    el.child(
+                        svg()
+                            .path("icons/lock.svg")
+                            .size(px(snap(LOCK_SIZE, scale)))
+                            .flex_none()
+                            .text_color(cream),
+                    )
+                })
+                .child(meter_bars(self.bars, cream, m, scale)),
+        )
     }
 }
 
@@ -254,10 +343,12 @@ fn overlay_bounds(cx: &App) -> Bounds<gpui::Pixels> {
     let pill = size(px(OVERLAY_WIDTH), px(OVERLAY_HEIGHT));
     if let Some(display) = cx.primary_display() {
         let screen = display.bounds();
+        // Snap to a 4px grid: whole device pixels at 100/125/150/175/200%.
+        let grid = |v: Pixels| px(((v / px(1.)) / 4.).round() * 4.);
         Bounds {
             origin: point(
-                screen.origin.x + (screen.size.width - pill.width) / 2.,
-                screen.origin.y + screen.size.height - pill.height - px(OVERLAY_BOTTOM_MARGIN),
+                grid(screen.origin.x + (screen.size.width - pill.width) / 2.),
+                grid(screen.origin.y + screen.size.height - pill.height - px(OVERLAY_BOTTOM_MARGIN)),
             ),
             size: pill,
         }
@@ -355,11 +446,17 @@ pub(crate) fn toggle_lock(cx: &mut App) {
 fn force_hide_overlay(cx: &mut App) {
     cx.global_mut::<OverlayState>().locked = false;
     if let Some(handle) = cx.global_mut::<OverlayState>().handle.take() {
-        let _ = handle.update(cx, |pill, window, _| {
-            // Release the mic before the window goes away.
+        let _ = handle.update(cx, |pill, _, cx| {
+            // Release the mic now; the window fades out, then closes.
             pill.meter = None;
-            window.remove_window();
+            pill.closing_at = Some(Instant::now());
+            cx.notify();
         });
+        cx.spawn(async move |cx| {
+            Timer::after(Duration::from_millis(EXIT_MS as u64 + 20)).await;
+            let _ = handle.update(cx, |_, window, _| window.remove_window());
+        })
+        .detach();
     }
 }
 
