@@ -194,7 +194,6 @@ impl MainWindow {
                             .items_center()
                             .gap(px(6.))
                             .pt(px(2.))
-                            .when_some(row.day_label(), |el, d| el.child(meta_pill(t, None, d)))
                             .child(meta_pill(
                                 t,
                                 Some("icons/text.svg"),

@@ -43,17 +43,7 @@ impl TranscriptRow {
 
     pub(crate) fn words(&self) -> usize {
         self.text.split_whitespace().count()
-    }
-
-    pub(crate) fn day_label(&self) -> Option<SharedString> {
-        let ago = today() - self.day?;
-        Some(match ago {
-            ..=0 => "Today".into(),
-            1 => "Yesterday".into(),
-            n => format!("{n} days ago").into(),
-        })
-    }
-}
+    }}
 
 /// Today as days since the Unix epoch (UTC).
 pub(crate) fn today() -> i64 {
@@ -67,6 +57,8 @@ pub(crate) struct Stats {
     pub wpm: u32,
     pub total_words: usize,
     pub streak_days: u32,
+    /// Words per day over the last 7 days, oldest first (today last).
+    pub week: [usize; 7],
 }
 
 /// WPM = words across rows with a known duration / their total minutes.
@@ -97,7 +89,15 @@ pub(crate) fn compute_stats(rows: &[TranscriptRow]) -> Stats {
         day -= 1;
     }
 
-    Stats { wpm, total_words, streak_days }
+    let mut week = [0usize; 7];
+    let now = today();
+    for r in rows {
+        if let Some(ago) = r.day.map(|d| now - d).filter(|a| (0..7).contains(a)) {
+            week[6 - ago as usize] += r.words();
+        }
+    }
+
+    Stats { wpm, total_words, streak_days, week }
 }
 
 /// A spoken word (or phrase) rewritten before the transcript is committed.
