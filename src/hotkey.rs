@@ -89,7 +89,20 @@ pub(crate) fn register_hotkey(cx: &mut App) {
 }
 
 pub(crate) fn set_capturing(cx: &mut App, on: bool) {
-    cx.global_mut::<HotkeyService>().capturing = on;
+    let svc = cx.global_mut::<HotkeyService>();
+    svc.capturing = on;
+    if on {
+        // Registered OS hotkeys swallow the combo before GPUI sees it.
+        if let Some(old) = svc.push_to_talk.take() {
+            let _ = svc.manager.unregister(old);
+        }
+    } else if svc.push_to_talk.is_none() {
+        if let Some(hk) = global_hotkey(&svc.hold.clone()) {
+            if svc.manager.register(hk).is_ok() {
+                svc.push_to_talk = Some(hk);
+            }
+        }
+    }
 }
 
 /// Re-read hold/toggle chords from prefs and re-register the OS hotkey.
