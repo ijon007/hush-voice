@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gpui::SharedString;
@@ -56,15 +55,13 @@ pub(crate) fn today() -> i64 {
 pub(crate) struct Stats {
     pub wpm: u32,
     pub total_words: usize,
-    pub streak_days: u32,
+    /// Typing time (at 40 wpm) minus speaking time, over timed rows.
+    pub minutes_saved: u32,
     /// Words per day over the last 7 days, oldest first (today last).
     pub week: [usize; 7],
 }
 
 /// WPM = words across rows with a known duration / their total minutes.
-/// Streak = consecutive days with a dictation, ending today (or yesterday,
-/// so the streak isn't "lost" before you've dictated today). Undated rows
-/// count toward words and WPM but not the streak.
 pub(crate) fn compute_stats(rows: &[TranscriptRow]) -> Stats {
     let total_words = rows.iter().map(TranscriptRow::words).sum();
 
@@ -78,16 +75,8 @@ pub(crate) fn compute_stats(rows: &[TranscriptRow]) -> Stats {
         0
     };
 
-    let days: HashSet<i64> = rows.iter().filter_map(|r| r.day).collect();
-    let mut day = today();
-    if !days.contains(&day) {
-        day -= 1;
-    }
-    let mut streak_days = 0;
-    while days.contains(&day) {
-        streak_days += 1;
-        day -= 1;
-    }
+    // ponytail: 40 wpm is the commonly cited average typing speed.
+    let minutes_saved = (timed_words as f32 / 40.0 - seconds / 60.0).max(0.0).round() as u32;
 
     let mut week = [0usize; 7];
     let now = today();
@@ -97,7 +86,7 @@ pub(crate) fn compute_stats(rows: &[TranscriptRow]) -> Stats {
         }
     }
 
-    Stats { wpm, total_words, streak_days, week }
+    Stats { wpm, total_words, minutes_saved, week }
 }
 
 /// A spoken word (or phrase) rewritten before the transcript is committed.

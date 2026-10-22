@@ -193,8 +193,8 @@ impl MainWindow {
                             .items_center()
                             .gap(px(6.))
                             .pt(px(2.))
-                            .when(row.seconds > 0., |el| el.child(meta_pill(t, row.duration_label())))
-                            .child(meta_pill(t, row.model.clone())),
+                            .child(meta_pill(t, row.model.clone()))
+                            .when(row.seconds > 0., |el| el.child(meta_pill(t, row.duration_label()))),
                     ),
             )
             .child(
@@ -313,10 +313,10 @@ fn stat_cell(
 }
 
 /// Seven thin columns, oldest to today; `level` is 0..=1 per day.
-fn week_bars(t: Theme, levels: [f32; 7], min_h: f32) -> impl IntoElement {
+fn week_bars(t: Theme, levels: [f32; 7]) -> impl IntoElement {
     div().flex().items_end().gap(px(3.)).h_full().children(levels.into_iter().enumerate().map(
         move |(i, level)| {
-            let h = if level > 0. { min_h + (18. - min_h) * level } else { 3. };
+            let h = if level > 0. { 5. + 13. * level } else { 3. };
             div().w(px(6.)).h(px(h)).rounded(px(2.)).bg(if level == 0. {
                 t.border
             } else if i == 6 {
@@ -343,11 +343,14 @@ fn group_thousands(n: usize) -> String {
 impl MainWindow {
     fn render_stats(&self, t: Theme) -> impl IntoElement {
         let stats = compute_stats(&self.history);
-        let streak_unit = if stats.streak_days == 1 { "day" } else { "days" };
+        let (saved, saved_unit) = if stats.minutes_saved >= 60 {
+            (format!("{:.1}", stats.minutes_saved as f32 / 60.), "hr")
+        } else {
+            (stats.minutes_saved.to_string(), "min")
+        };
+        let n = self.history.len();
         let peak = stats.week.iter().copied().max().unwrap_or(0).max(1) as f32;
         let words = stats.week.map(|w| w as f32 / peak);
-        let active = stats.week.map(|w| if w > 0 { 1. } else { 0. });
-        // ponytail: 40 wpm is the commonly cited average typing speed.
         let vs_typing = if stats.wpm > 0 {
             format!("{:.1}× faster than typing", stats.wpm as f32 / 40.)
         } else {
@@ -368,14 +371,17 @@ impl MainWindow {
                 "Words dictated",
                 group_thousands(stats.total_words),
                 None,
-                week_bars(t, words, 5.),
+                week_bars(t, words),
             ))
             .child(stat_cell(
                 t,
-                "Current streak",
-                stats.streak_days.to_string(),
-                Some(streak_unit),
-                week_bars(t, active, 18.),
+                "Time saved",
+                saved,
+                Some(saved_unit),
+                div()
+                    .text_size(px(12.))
+                    .text_color(t.text_secondary)
+                    .child(format!("Across {n} {}", if n == 1 { "dictation" } else { "dictations" })),
             ));
         let wrap = div().pb(px(28.));
         // First show only: the stats card rises in once.
