@@ -8,6 +8,7 @@ pub(crate) enum Page {
     Home,
     Dictionary,
     Shortcuts,
+    Style,
     Settings,
 }
 
@@ -157,6 +158,63 @@ fn trigger_matches(chars: &[char], start: usize, trigger: &str) -> bool {
     end == chars.len() || !is_shortcut_word(chars[end])
 }
 
+/// Hesitation sounds dropped by Formal and Casual.
+const FILLERS: &[&str] = &["um", "umm", "uh", "uhh", "er", "erm", "hmm", "mm"];
+
+/// Rewrite raw transcript text in the chosen output style.
+/// - Formal: fillers removed, sentences capitalized, closing period added.
+/// - Casual: fillers removed, lowercase sentence starts (keeps "I"), no final period.
+/// - Verbatim: unchanged.
+pub(crate) fn apply_style(text: &str, style: crate::prefs::Style) -> String {
+    use crate::prefs::Style;
+    if style == Style::Verbatim {
+        return text.trim().to_string();
+    }
+    // Drop filler words (and the comma that often trails them).
+    let mut words: Vec<String> = Vec::new();
+    for raw in text.split_whitespace() {
+        let core = raw.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
+        if FILLERS.contains(&core.as_str()) {
+            // "should, uh, ship" -> "should ship"; keep a sentence end glued to it.
+            if let Some(prev) = words.last_mut() {
+                let mut fixed = prev.trim_end_matches(',').to_string();
+                if let Some(end) = raw.chars().last().filter(|c| matches!(c, '.' | '?' | '!')) {
+                    fixed.push(end);
+                }
+                *prev = fixed;
+            }
+            continue;
+        }
+        words.push(raw.to_string());
+    }
+    let mut out = String::new();
+    let mut sentence_start = true;
+    for w in &words {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        let mut chars = w.chars();
+        let first = chars.next().unwrap_or_default();
+        let rest: String = chars.collect();
+        let is_i = w == "i" || w.starts_with("i'") || w == "I" || w.starts_with("I'");
+        let first = match style {
+            Style::Formal if sentence_start || is_i => first.to_uppercase().collect::<String>(),
+            Style::Casual if sentence_start && !is_i => first.to_lowercase().collect(),
+            Style::Casual if is_i => first.to_uppercase().collect(),
+            _ => first.to_string(),
+        };
+        out.push_str(&first);
+        out.push_str(&rest);
+        sentence_start = matches!(w.chars().last(), Some('.' | '?' | '!'));
+    }
+    let out = out.trim_end_matches(',').to_string();
+    match style {
+        Style::Formal if !out.is_empty() && !out.ends_with(['.', '?', '!']) => format!("{out}."),
+        Style::Casual => out.strip_suffix('.').map(str::to_string).unwrap_or(out),
+        _ => out,
+    }
+}
+
 pub(crate) fn sample_history() -> Vec<TranscriptRow> {
     let d = today();
     let mut rows = vec![
@@ -190,6 +248,21 @@ mod tests {
         );
         assert_eq!(apply_shortcuts("Email me", &shortcuts), "ada@example.com me");
         assert_eq!(apply_shortcuts("emailing the list", &shortcuts), "emailing the list");
+    }
+
+    #[test]
+    fn styles_rewrite_the_same_sentence() {
+        use crate::prefs::Style;
+        let raw = "um so i think we should, uh, ship the build on Friday. what do you think?";
+        assert_eq!(
+            apply_style(raw, Style::Formal),
+            "So I think we should ship the build on Friday. What do you think?"
+        );
+        assert_eq!(
+            apply_style(raw, Style::Casual),
+            "so I think we should ship the build on Friday. what do you think?"
+        );
+        assert_eq!(apply_style(raw, Style::Verbatim), raw);
     }
 
     #[test]

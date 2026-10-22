@@ -29,7 +29,8 @@ impl MainWindow {
                     .gap(px(1.))
                     .child(self.nav_item(t, "Home", "icons/home.svg", Page::Home, cx))
                     .child(self.nav_item(t, "Dictionary", "icons/book.svg", Page::Dictionary, cx))
-                    .child(self.nav_item(t, "Shortcuts", "icons/keyboard.svg", Page::Shortcuts, cx)),
+                    .child(self.nav_item(t, "Shortcuts", "icons/keyboard.svg", Page::Shortcuts, cx))
+                    .child(self.nav_item(t, "Style", "icons/style.svg", Page::Style, cx)),
             )
             .child(self.nav_item(t, "Settings", "icons/settings.svg", Page::Settings, cx))
     }
