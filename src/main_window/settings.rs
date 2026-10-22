@@ -325,7 +325,21 @@ impl MainWindow {
                     .into_any_element(),
             ),
         };
-        group(t, "About", vec![setting_row(t, "Version", detail, control, false)])
+        group(
+            t,
+            "About",
+            vec![
+                setting_row(t, "Version", detail, control, true),
+                setting_row(
+                    t,
+                    "Crash logs",
+                    "If Hush crashes, a report is saved here",
+                    outline_button(t, "open-logs", "Open logs folder")
+                        .on_click(|_, _, _| crate::crashlog::open_folder()),
+                    false,
+                ),
+            ],
+        )
     }
 
     fn render_history_settings(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {

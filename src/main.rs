@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod app_icon;
+mod crashlog;
 mod assets;
 mod hotkey;
 mod main_window;
@@ -24,6 +25,7 @@ use main_window::MainWindow;
 use overlay::{PERSIST_OVERLAY, show_overlay};
 
 fn main() {
+    crashlog::install();
     // Debug tools (no window):
     //   hush-voice --transcribe <file.wav> [model-id-or-path] [language]
     //   hush-voice --download <fast|balanced|best>
