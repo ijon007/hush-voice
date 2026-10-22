@@ -295,6 +295,21 @@ impl MainWindow {
                 ],
             ))
             .child(self.render_history_settings(t, cx))
+            .child(self.render_about(t, cx))
+    }
+
+    fn render_about(&self, t: Theme, _cx: &mut Context<Self>) -> impl IntoElement {
+        group(
+            t,
+            "About",
+            vec![setting_row(
+                t,
+                "Version",
+                format!("Hush {}", env!("CARGO_PKG_VERSION")),
+                div(),
+                false,
+            )],
+        )
     }
 
     fn render_history_settings(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
