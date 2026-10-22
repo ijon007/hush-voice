@@ -5,6 +5,8 @@ mod hotkey;
 mod main_window;
 mod models;
 mod overlay;
+mod prefs;
+mod sounds;
 mod theme;
 mod widgets;
 
@@ -19,6 +21,7 @@ use overlay::{PERSIST_OVERLAY, show_overlay};
 fn main() {
     Application::new().with_assets(assets::Assets).run(|cx: &mut App| {
         theme::init(cx);
+        prefs::init(cx);
         register_hotkey(cx);
 
         let bounds = Bounds::centered(None, size(px(820.), px(600.)), cx);

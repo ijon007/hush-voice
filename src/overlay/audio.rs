@@ -18,8 +18,13 @@ pub(crate) struct MicMeter {
 impl MicMeter {
     /// `None` when there is no input device or it can't be opened
     /// (e.g. mic permission denied); the pill then shows a static mark.
-    pub(crate) fn start() -> Option<Self> {
-        let device = cpal::default_host().default_input_device()?;
+    /// Opens `name` if it is connected, else the Windows default input.
+    pub(crate) fn start(name: Option<&str>) -> Option<Self> {
+        let host = cpal::default_host();
+        let named = name.and_then(|want| {
+            host.input_devices().ok()?.find(|d| d.name().ok().as_deref() == Some(want))
+        });
+        let device = named.or_else(|| host.default_input_device())?;
         let config = device.default_input_config().ok()?;
         let level = Arc::new(AtomicU32::new(0f32.to_bits()));
         let format = config.sample_format();
@@ -69,6 +74,14 @@ impl MicMeter {
     pub(crate) fn level(&self) -> f32 {
         f32::from_bits(self.level.load(Ordering::Relaxed))
     }
+}
+
+/// Names of the connected input devices, in system order.
+pub(crate) fn input_device_names() -> Vec<String> {
+    cpal::default_host()
+        .input_devices()
+        .map(|it| it.filter_map(|d| d.name().ok()).collect())
+        .unwrap_or_default()
 }
 
 fn publish(level: &AtomicU32, samples: impl Iterator<Item = f32>) {

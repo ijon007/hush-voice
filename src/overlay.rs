@@ -1,4 +1,4 @@
-mod audio;
+pub(crate) mod audio;
 
 use std::time::{Duration, Instant};
 
@@ -8,6 +8,8 @@ use gpui::{
     fill, hsla, point, prelude::*, px, rgb, size, svg,
 };
 
+use crate::prefs::{OverlayPosition, prefs};
+use crate::sounds::{Cue, play};
 use crate::theme::Theme;
 
 use audio::MicMeter;
@@ -21,6 +23,7 @@ const OVERLAY_HEIGHT: f32 = 48.;
 /// Pill height (whole px; ~22% shorter than the old 36px).
 const PILL_H: f32 = 28.;
 const OVERLAY_BOTTOM_MARGIN: f32 = 48.;
+const OVERLAY_TOP_MARGIN: f32 = 24.;
 
 pub(crate) struct OverlayState {
     pub handle: Option<WindowHandle<RecordingPill>>,
@@ -112,12 +115,12 @@ impl LevelMeter {
 }
 
 impl RecordingPill {
-    fn new(locked: bool) -> Self {
+    fn new(locked: bool, mic: Option<String>) -> Self {
         let now = Instant::now();
         Self {
             shaped: false,
             locked,
-            meter: MicMeter::start(),
+            meter: MicMeter::start(mic.as_deref()),
             bars: [0.; BAR_COUNT],
             weights: [1.; BAR_COUNT],
             rng: 0x9e37_79b9,
@@ -348,7 +351,12 @@ fn overlay_bounds(cx: &App) -> Bounds<gpui::Pixels> {
         Bounds {
             origin: point(
                 grid(screen.origin.x + (screen.size.width - pill.width) / 2.),
-                grid(screen.origin.y + screen.size.height - pill.height - px(OVERLAY_BOTTOM_MARGIN)),
+                grid(match prefs(cx).overlay_position {
+                    OverlayPosition::Bottom => {
+                        screen.origin.y + screen.size.height - pill.height - px(OVERLAY_BOTTOM_MARGIN)
+                    }
+                    OverlayPosition::Top => screen.origin.y + px(OVERLAY_TOP_MARGIN),
+                }),
             ),
             size: pill,
         }
@@ -368,6 +376,8 @@ fn open_overlay(cx: &mut App, locked: bool) {
     }
 
     let bounds = overlay_bounds(cx);
+    let mic = prefs(cx).mic.clone();
+    let cues = prefs(cx).sound_cues;
     let handle = cx
         .open_window(
             WindowOptions {
@@ -383,11 +393,14 @@ fn open_overlay(cx: &mut App, locked: bool) {
             },
             |window, cx| {
                 apply_overlay_dwm(window);
-                cx.new(|_| RecordingPill::new(locked))
+                cx.new(|_| RecordingPill::new(locked, mic))
             },
         )
         .ok();
 
+    if cues && handle.is_some() {
+        play(Cue::Start);
+    }
     if let Some(handle) = handle.clone() {
         // Wait until HWND has a real client size before SetWindowRgn.
         cx.spawn(async move |cx| {
@@ -446,6 +459,9 @@ pub(crate) fn toggle_lock(cx: &mut App) {
 fn force_hide_overlay(cx: &mut App) {
     cx.global_mut::<OverlayState>().locked = false;
     if let Some(handle) = cx.global_mut::<OverlayState>().handle.take() {
+        if prefs(cx).sound_cues {
+            play(Cue::Stop);
+        }
         let _ = handle.update(cx, |pill, _, cx| {
             // Release the mic now; the window fades out, then closes.
             pill.meter = None;
