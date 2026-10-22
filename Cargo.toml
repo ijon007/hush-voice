@@ -14,6 +14,7 @@ whisper-rs = "0.16"
 global-hotkey = "0.8.0"
 gpui = "0.2.2"
 raw-window-handle = "0.6"
+tray-icon = "0.21"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = [

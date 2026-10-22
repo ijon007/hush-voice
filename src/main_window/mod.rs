@@ -73,7 +73,7 @@ pub(crate) struct MainWindow {
     /// Bumped on tab switch so the body cross-fades.
     tab_nonce: usize,
     /// Per-switch animation keys: [launch at login, sound cues].
-    switch_nonce: [usize; 3],
+    switch_nonce: [usize; 4],
     /// Model downloads in flight, by model id.
     downloads: std::collections::HashMap<&'static str, std::sync::Arc<crate::engine::Download>>,
     /// "Clear history" is waiting for a second click.
@@ -94,6 +94,15 @@ impl MainWindow {
     pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         // Re-render when Windows switches light/dark (used by the System option).
         let appearance = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
+        // Alt+F4 / taskbar close: hide to the tray when that's on.
+        window.on_window_should_close(cx, |_, cx| {
+            if crate::prefs::prefs(cx).minimize_to_tray {
+                crate::tray::hide_main();
+                false
+            } else {
+                true
+            }
+        });
         Self {
             page: Page::Home,
             hotkey: "Ctrl + Space".into(),
@@ -133,7 +142,7 @@ impl MainWindow {
             dict_word_focus: cx.focus_handle(),
             settings_tab: SettingsTab::General,
             tab_nonce: 0,
-            switch_nonce: [0; 3],
+            switch_nonce: [0; 4],
             downloads: Default::default(),
             clear_confirm: false,
             launch_at_login: crate::prefs::autostart::enabled(),
@@ -248,6 +257,7 @@ impl Render for MainWindow {
         if !self.icon_applied {
             crate::app_icon::apply(window);
             self.icon_applied = true;
+            crate::tray::register_main(window);
         }
         self.tick_mic_test(window, cx);
         self.history = crate::history::rows(cx);

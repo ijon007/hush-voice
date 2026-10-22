@@ -54,6 +54,8 @@ pub(crate) struct Prefs {
     /// Paste into the focused app; off = copy to the clipboard only.
     pub paste: bool,
     pub keep_history: KeepHistory,
+    /// Close/minimize hides the window to the tray instead of quitting.
+    pub minimize_to_tray: bool,
 }
 
 impl Default for Prefs {
@@ -69,6 +71,7 @@ impl Default for Prefs {
             language: "en".into(),
             paste: true,
             keep_history: KeepHistory::Forever,
+            minimize_to_tray: true,
         }
     }
 }
@@ -111,6 +114,7 @@ fn load() -> Prefs {
             "custom_model" => p.custom_model = (!value.is_empty()).then(|| value.to_string()),
             "language" if !value.is_empty() => p.language = value.to_string(),
             "paste" => p.paste = value != "false",
+            "minimize_to_tray" => p.minimize_to_tray = value != "false",
             "keep_history" => {
                 p.keep_history = match value {
                     "30" => KeepHistory::Days30,
@@ -145,7 +149,7 @@ fn save(p: &Prefs) {
         let _ = std::fs::create_dir_all(dir);
     }
     let body = format!(
-        "sound_cues={}\noverlay_position={}\nmic={}\nmodel={}\nstyle={}\ncustom_model={}\nlanguage={}\npaste={}\nkeep_history={}\n",
+        "sound_cues={}\noverlay_position={}\nmic={}\nmodel={}\nstyle={}\ncustom_model={}\nlanguage={}\npaste={}\nkeep_history={}\nminimize_to_tray={}\n",
         p.sound_cues,
         match p.overlay_position {
             OverlayPosition::Bottom => "bottom",
@@ -166,6 +170,7 @@ fn save(p: &Prefs) {
             KeepHistory::Days30 => "30",
             KeepHistory::Days7 => "7",
         },
+        p.minimize_to_tray,
     );
     let _ = std::fs::write(path, body);
 }

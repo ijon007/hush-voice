@@ -38,10 +38,18 @@ impl MainWindow {
                             .child("Hush"),
                     ),
             )
-            .child(window_btn(t, "win-min", "\u{2014}", |window, _| {
-                window.minimize_window();
+            .child(window_btn(t, "win-min", "\u{2014}", |window, cx| {
+                if crate::prefs::prefs(cx).minimize_to_tray {
+                    crate::tray::hide_main();
+                } else {
+                    window.minimize_window();
+                }
             }))
-            .child(window_btn(t, "win-close", "\u{2715}", |window, _| {
+            .child(window_btn(t, "win-close", "\u{2715}", |window, cx| {
+                if crate::prefs::prefs(cx).minimize_to_tray {
+                    crate::tray::hide_main();
+                    return;
+                }
                 window.remove_window();
             }))
     }

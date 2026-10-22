@@ -13,6 +13,7 @@ mod pipeline;
 mod prefs;
 mod sounds;
 mod theme;
+mod tray;
 mod update;
 mod widgets;
 
@@ -43,6 +44,7 @@ fn main() {
         history::init(cx, keep);
         register_hotkey(cx);
         update::init(cx);
+        tray::init(cx);
 
         let (w, h) = window_size(cx);
         let bounds = Bounds::centered(None, size(px(w), px(h)), cx);

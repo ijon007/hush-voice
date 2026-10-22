@@ -257,6 +257,17 @@ impl MainWindow {
                             cx.notify();
                         }),
                     ),
+                    true,
+                ), setting_row(
+                    t,
+                    "Minimize to tray",
+                    "Closing or minimizing keeps Hush running in the tray",
+                    switch(t, "sw-tray", p.minimize_to_tray, self.switch_nonce[3]).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.switch_nonce[3] += 1;
+                            update_prefs(cx, |p| p.minimize_to_tray = !p.minimize_to_tray);
+                        }),
+                    ),
                     false,
                 )],
             ))
