@@ -3,6 +3,7 @@
 
 use gpui::{App, Global};
 
+use crate::chord::{Chord, DEFAULT_HOLD, DEFAULT_TOGGLE};
 use crate::theme::app_dir;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -56,6 +57,10 @@ pub(crate) struct Prefs {
     pub keep_history: KeepHistory,
     /// Close/minimize hides the window to the tray instead of quitting.
     pub minimize_to_tray: bool,
+    /// Hold to dictate, e.g. `Ctrl + Space`.
+    pub hold_shortcut: String,
+    /// Press to lock dictation on/off, e.g. `Ctrl + Win + Alt`.
+    pub toggle_shortcut: String,
 }
 
 impl Default for Prefs {
@@ -72,7 +77,19 @@ impl Default for Prefs {
             paste: true,
             keep_history: KeepHistory::Forever,
             minimize_to_tray: true,
+            hold_shortcut: DEFAULT_HOLD.into(),
+            toggle_shortcut: DEFAULT_TOGGLE.into(),
         }
+    }
+}
+
+impl Prefs {
+    pub(crate) fn hold_chord(&self) -> Chord {
+        Chord::parse_or_default(&self.hold_shortcut, Chord::hold_default())
+    }
+
+    pub(crate) fn toggle_chord(&self) -> Chord {
+        Chord::parse_or_default(&self.toggle_shortcut, Chord::toggle_default())
     }
 }
 
@@ -129,6 +146,16 @@ fn load() -> Prefs {
                     _ => Style::Formal,
                 }
             }
+            "hold_shortcut" => {
+                if let Some(c) = Chord::parse(value) {
+                    p.hold_shortcut = c.display();
+                }
+            }
+            "toggle_shortcut" => {
+                if let Some(c) = Chord::parse(value) {
+                    p.toggle_shortcut = c.display();
+                }
+            }
             _ => {}
         }
     }
@@ -149,7 +176,7 @@ fn save(p: &Prefs) {
         let _ = std::fs::create_dir_all(dir);
     }
     let body = format!(
-        "sound_cues={}\noverlay_position={}\nmic={}\nmodel={}\nstyle={}\ncustom_model={}\nlanguage={}\npaste={}\nkeep_history={}\nminimize_to_tray={}\n",
+        "sound_cues={}\noverlay_position={}\nmic={}\nmodel={}\nstyle={}\ncustom_model={}\nlanguage={}\npaste={}\nkeep_history={}\nminimize_to_tray={}\nhold_shortcut={}\ntoggle_shortcut={}\n",
         p.sound_cues,
         match p.overlay_position {
             OverlayPosition::Bottom => "bottom",
@@ -171,6 +198,8 @@ fn save(p: &Prefs) {
             KeepHistory::Days7 => "7",
         },
         p.minimize_to_tray,
+        p.hold_shortcut,
+        p.toggle_shortcut,
     );
     let _ = std::fs::write(path, body);
 }

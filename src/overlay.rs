@@ -28,7 +28,7 @@ const OVERLAY_TOP_MARGIN: f32 = 24.;
 
 pub(crate) struct OverlayState {
     pub handle: Option<WindowHandle<RecordingPill>>,
-    /// Locked via Ctrl+Win+Alt: releasing the hold shortcut won't dismiss it.
+    /// Locked via the toggle shortcut: releasing the hold shortcut won't dismiss it.
     pub locked: bool,
 }
 
@@ -36,7 +36,7 @@ impl Global for OverlayState {}
 
 pub(crate) struct RecordingPill {
     shaped: bool,
-    /// Shows the lock glyph (Ctrl+Win+Alt mode).
+    /// Shows the lock glyph (toggle-shortcut mode).
     locked: bool,
     /// Live mic level; `None` if no mic / permission denied (flat bars).
     meter: Option<MicMeter>,
@@ -475,7 +475,7 @@ pub(crate) fn overlay_visible_unlocked(cx: &App) -> bool {
     s.handle.is_some() && !s.locked
 }
 
-/// Ctrl+Win+Alt: lock on (opening or upgrading a held pill), or off.
+/// Toggle shortcut: lock on (opening or upgrading a held pill), or off.
 pub(crate) fn toggle_lock(cx: &mut App) {
     let state = cx.global::<OverlayState>();
     match (state.handle.clone(), state.locked) {
