@@ -70,10 +70,10 @@ impl MainWindow {
             .relative()
             .min_w(px(0.))
             // Fixed height: GPUI grid rows don't size to content.
-            .h(px(212.))
+            .h(px(268.))
             .flex()
             .flex_col()
-            .p(px(16.))
+            .p(px(6.))
             .rounded(px(RADIUS_PX))
             .bg(t.surface)
             .border_1()
@@ -82,53 +82,47 @@ impl MainWindow {
             .active(|s| s.opacity(0.9))
             .cursor_pointer()
             .child(
+                // Inset preview: the spoken line as it lands on the page.
                 div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .child(
-                        div()
-                            .text_size(px(15.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(t.text)
-                            .child(title),
-                    )
-                    .child(selection_dot(t, selected, self.style_nonce)),
-            )
-            .child(
-                div()
-                    .pt(px(4.))
-                    .h(px(40.))
-                    .text_size(px(12.))
-                    .line_height(px(17.))
-                    .text_color(t.text_muted)
-                    .child(detail),
-            )
-            .child(
-                // Inset preview: the spoken line as a sent message.
-                div()
-                    .mt(px(12.))
-                    .p(px(10.))
-                    .h(px(96.))
-                    .rounded(px(10.))
+                    .h(px(148.))
+                    .flex_none()
+                    .p(px(14.))
+                    .rounded(px(RADIUS_PX - 6.))
                     .bg(t.track)
+                    .overflow_hidden()
+                    .text_size(px(14.))
+                    .line_height(px(21.))
+                    .text_color(t.text)
+                    .child(apply_style(SPOKEN, style)),
+            )
+            .child(
+                div()
+                    .flex_1()
                     .flex()
                     .flex_col()
-                    .justify_end()
-                    .items_end()
-                    .overflow_hidden()
+                    .gap(px(4.))
+                    .px(px(10.))
+                    .pt(px(12.))
                     .child(
                         div()
-                            .max_w_full()
-                            .px(px(10.))
-                            .py(px(7.))
-                            .rounded(px(14.))
-                            .rounded_br(px(4.))
-                            .bg(t.primary)
-                            .text_color(t.primary_text)
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_size(px(15.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(t.text)
+                                    .child(title),
+                            )
+                            .child(selection_dot(t, selected, self.style_nonce)),
+                    )
+                    .child(
+                        div()
                             .text_size(px(12.))
                             .line_height(px(17.))
-                            .child(apply_style(SPOKEN, style)),
+                            .text_color(t.text_muted)
+                            .child(detail),
                     ),
             )
             .when(selected, |el| {
