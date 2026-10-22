@@ -28,7 +28,7 @@ impl MainWindow {
                     .window_control_area(WindowControlArea::Drag)
                     .child(
                         // Brand mark: the transparent wave logo, tinted to the theme text.
-                        svg().path("logo/mark.svg").w(px(22.)).h(px(19.8)).flex_none().text_color(t.text),
+                        svg().path("logo/mark.svg").w(px(20.)).h(px(18.)).flex_none().text_color(t.text),
                     )
                     .child(
                         div()

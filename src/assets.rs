@@ -24,7 +24,7 @@ const FILES: &[(&str, &[u8])] = &[
     ("icons/lock.svg", include_bytes!("../assets/icons/lock.svg")),
     ("icons/download.svg", include_bytes!("../assets/icons/download.svg")),
     ("logo/icon.svg", include_bytes!("../assets/logo/icon-dark.svg")),
-    ("logo/mark.svg", include_bytes!("../assets/logo/mark-light.svg")),
+    ("logo/mark.svg", include_bytes!("../assets/logo/mark-small.svg")),
 ];
 
 impl AssetSource for Assets {
