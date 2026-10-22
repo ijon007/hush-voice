@@ -41,8 +41,17 @@ impl TranscriptRow {
         format!("{:.1}s", self.seconds).into()
     }
 
-    fn words(&self) -> usize {
+    pub(crate) fn words(&self) -> usize {
         self.text.split_whitespace().count()
+    }
+
+    pub(crate) fn day_label(&self) -> Option<SharedString> {
+        let ago = today() - self.day?;
+        Some(match ago {
+            ..=0 => "Today".into(),
+            1 => "Yesterday".into(),
+            n => format!("{n} days ago").into(),
+        })
     }
 }
 

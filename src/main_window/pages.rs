@@ -186,17 +186,23 @@ impl MainWindow {
                             .line_clamp(3)
                             .child(row.text.clone()),
                     )
-                    .child(
+                    .child({
+                        let words = row.words();
                         div()
                             .flex()
+                            .flex_wrap()
                             .items_center()
                             .gap(px(6.))
-                            .text_size(px(12.))
-                            .text_color(t.text_muted)
-                            .child(row.model.clone())
-                            .child(div().text_color(t.border_strong).child("\u{00b7}"))
-                            .child(row.duration_label()),
-                    ),
+                            .pt(px(2.))
+                            .when_some(row.day_label(), |el, d| el.child(meta_pill(t, None, d)))
+                            .child(meta_pill(
+                                t,
+                                Some("icons/text.svg"),
+                                format!("{words} {}", if words == 1 { "word" } else { "words" }).into(),
+                            ))
+                            .when(row.seconds > 0., |el| el.child(meta_pill(t, None, row.duration_label())))
+                            .child(meta_pill(t, None, row.model.clone()))
+                    }),
             )
             .child(
                 // Slot is always reserved; the button fades in on row hover.
@@ -243,6 +249,25 @@ impl MainWindow {
                     })),
             )
     }
+}
+
+/// Small rounded metadata badge under a transcript.
+fn meta_pill(t: Theme, icon: Option<&'static str>, label: SharedString) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(4.))
+        .h(px(20.))
+        .px(px(8.))
+        .rounded_full()
+        .bg(t.surface_selected)
+        .border_1()
+        .border_color(t.border)
+        .text_size(px(11.))
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(t.text_secondary)
+        .when_some(icon, |el, i| el.child(svg().path(i).size(px(11.)).text_color(t.text_muted)))
+        .child(label)
 }
 
 /// One stat card: icon tile, big number (+ muted unit), label underneath.
