@@ -430,7 +430,7 @@ impl MainWindow {
                     .gap(px(16.))
                     .px(px(20.))
                     .pt(px(20.))
-                    .pb(px(20.))
+                    .pb(px(16.))
                     .child(
                         div()
                             .flex()
@@ -476,11 +476,8 @@ impl MainWindow {
                     .flex()
                     .justify_end()
                     .gap(px(8.))
-                    .px(px(16.))
-                    .py(px(12.))
-                    .bg(t.panel)
-                    .border_t_1()
-                    .border_color(t.border)
+                    .px(px(20.))
+                    .pb(px(20.))
                     .child(self.dialog_cancel(t, cx))
                     .child(self.dialog_confirm(t, ready, cx)),
             )
