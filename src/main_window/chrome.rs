@@ -1,4 +1,4 @@
-use gpui::{Context, FontWeight, WindowControlArea, div, img, prelude::*, px};
+use gpui::{Context, FontWeight, WindowControlArea, div, prelude::*, px, svg};
 
 use crate::main_window::MainWindow;
 use crate::main_window::sidebar::{ITEM_PAD, SIDEBAR_PAD};
@@ -27,8 +27,8 @@ impl MainWindow {
                     .gap(px(7.))
                     .window_control_area(WindowControlArea::Drag)
                     .child(
-                        // App icon (dark tile) in full color, same in both themes.
-                        img("logo/icon.svg").size(px(16.)).flex_none(),
+                        // Brand mark: the transparent wave logo, tinted to the theme text.
+                        svg().path("logo/mark.svg").w(px(22.)).h(px(19.8)).flex_none().text_color(t.text),
                     )
                     .child(
                         div()
