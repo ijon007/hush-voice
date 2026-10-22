@@ -9,6 +9,7 @@ use gpui::{
 };
 
 use crate::prefs::{OverlayPosition, prefs};
+use crate::{engine, history, paste, pipeline};
 use crate::sounds::{Cue, play};
 use crate::theme::Theme;
 
@@ -18,7 +19,7 @@ use audio::MicMeter;
 pub(crate) const PERSIST_OVERLAY: bool = false;
 
 /// Window includes padding so the pill’s soft shadow isn’t clipped by the region.
-const OVERLAY_WIDTH: f32 = 104.;
+const OVERLAY_WIDTH: f32 = 224.;
 const OVERLAY_HEIGHT: f32 = 48.;
 /// Pill height (whole px; ~22% shorter than the old 36px).
 const PILL_H: f32 = 28.;
@@ -51,6 +52,10 @@ pub(crate) struct RecordingPill {
     opened_at: Instant,
     /// Set when hiding; drives the quick fade + drop out.
     closing_at: Option<Instant>,
+    /// Recording stopped, whisper is running: bars shimmer.
+    transcribing: Option<Instant>,
+    /// No model on disk: the pill shows a hint instead of bars.
+    no_model: bool,
     #[cfg(debug_assertions)]
     last_log: Instant,
 }
@@ -115,12 +120,12 @@ impl LevelMeter {
 }
 
 impl RecordingPill {
-    fn new(locked: bool, mic: Option<String>) -> Self {
+    fn new(locked: bool, mic: Option<String>, no_model: bool) -> Self {
         let now = Instant::now();
         Self {
             shaped: false,
             locked,
-            meter: MicMeter::start(mic.as_deref()),
+            meter: if no_model { None } else { MicMeter::start(mic.as_deref()) },
             bars: [0.; BAR_COUNT],
             weights: [1.; BAR_COUNT],
             rng: 0x9e37_79b9,
@@ -129,6 +134,8 @@ impl RecordingPill {
             level_meter: LevelMeter::new(),
             opened_at: now,
             closing_at: None,
+            transcribing: None,
+            no_model,
             #[cfg(debug_assertions)]
             last_log: now,
         }
@@ -183,6 +190,7 @@ const EXIT_MS: f32 = 120.;
 /// Entrance rises this far (px); exit drops half of it.
 const RISE: f32 = 6.;
 const LOCK_SIZE: f32 = 9.;
+const NO_MODEL_W: f32 = 200.;
 const LOCK_GAP: f32 = 6.;
 const PILL_PAD_X: f32 = 12.;
 
@@ -272,6 +280,14 @@ impl Render for RecordingPill {
         // Redraw every frame only while a mic is live (window exists = visible).
         if self.meter.is_some() {
             self.tick();
+        } else if let Some(t0) = self.transcribing {
+            // Gentle wave travelling across the bars while whisper runs.
+            let t = (now - t0).as_secs_f32();
+            for (i, bar) in self.bars.iter_mut().enumerate() {
+                let wave = 0.5 + 0.5 * (t * 6.5 - i as f32 * 0.9).sin();
+                let target = 0.08 + 0.22 * wave * (t * 4.).min(1.);
+                *bar += (target - *bar) * 0.25;
+            }
         }
         // Entrance / exit progress (1 = fully shown).
         let enter = ease_out((now - self.opened_at).as_secs_f32() * 1000. / ENTER_MS);
@@ -284,7 +300,7 @@ impl Render for RecordingPill {
             None => (enter, RISE * (1. - enter)),
         };
         let animating = enter < 1. || self.closing_at.is_some();
-        if self.meter.is_some() || animating {
+        if self.meter.is_some() || self.transcribing.is_some() || animating {
             window.request_animation_frame();
         }
 
@@ -298,7 +314,11 @@ impl Render for RecordingPill {
         let scale = window.scale_factor();
         let m = BarMetrics::new(scale);
         let lock_w = if self.locked { snap(LOCK_SIZE, scale) + snap(LOCK_GAP, scale) } else { 0. };
-        let pill_w = snap(PILL_PAD_X * 2. + m.width(scale) + lock_w, scale);
+        let pill_w = if self.no_model {
+            snap(NO_MODEL_W, scale)
+        } else {
+            snap(PILL_PAD_X * 2. + m.width(scale) + lock_w, scale)
+        };
         let pill_h = snap(PILL_H, scale);
         let left = snap((OVERLAY_WIDTH - pill_w) / 2., scale);
         let top = snap((OVERLAY_HEIGHT - pill_h) / 2. + dy, scale);
@@ -337,7 +357,16 @@ impl Render for RecordingPill {
                             .text_color(cream),
                     )
                 })
-                .child(meter_bars(self.bars, cream, m, scale)),
+                .when(self.no_model, |el| {
+                    el.justify_center().child(
+                        div()
+                            .text_size(px(12.))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(cream)
+                            .child("Download a model in Settings"),
+                    )
+                })
+                .when(!self.no_model, |el| el.child(meter_bars(self.bars, cream, m, scale))),
         )
     }
 }
@@ -378,6 +407,12 @@ fn open_overlay(cx: &mut App, locked: bool) {
     let bounds = overlay_bounds(cx);
     let mic = prefs(cx).mic.clone();
     let cues = prefs(cx).sound_cues;
+    let model = engine::resolve(&prefs(cx).model, prefs(cx).custom_model.as_deref());
+    let no_model = model.is_none();
+    if let Some(path) = model {
+        // Warm the model while the user talks.
+        std::thread::spawn(move || engine::preload(&path));
+    }
     let handle = cx
         .open_window(
             WindowOptions {
@@ -393,12 +428,12 @@ fn open_overlay(cx: &mut App, locked: bool) {
             },
             |window, cx| {
                 apply_overlay_dwm(window);
-                cx.new(|_| RecordingPill::new(locked, mic))
+                cx.new(|_| RecordingPill::new(locked, mic, no_model))
             },
         )
         .ok();
 
-    if cues && handle.is_some() {
+    if cues && handle.is_some() && !no_model {
         play(Cue::Start);
     }
     if let Some(handle) = handle.clone() {
@@ -458,22 +493,68 @@ pub(crate) fn toggle_lock(cx: &mut App) {
 
 fn force_hide_overlay(cx: &mut App) {
     cx.global_mut::<OverlayState>().locked = false;
-    if let Some(handle) = cx.global_mut::<OverlayState>().handle.take() {
-        if prefs(cx).sound_cues {
-            play(Cue::Stop);
-        }
-        let _ = handle.update(cx, |pill, _, cx| {
-            // Release the mic now; the window fades out, then closes.
-            pill.meter = None;
-            pill.closing_at = Some(Instant::now());
-            cx.notify();
-        });
-        cx.spawn(async move |cx| {
-            Timer::after(Duration::from_millis(EXIT_MS as u64 + 20)).await;
-            let _ = handle.update(cx, |_, window, _| window.remove_window());
-        })
-        .detach();
+    let Some(handle) = cx.global_mut::<OverlayState>().handle.take() else { return };
+    // Release the mic and grab what was said.
+    let captured = handle
+        .update(cx, |pill, _, _| pill.meter.take().map(|m| m.take_samples()))
+        .ok()
+        .flatten();
+    let p = prefs(cx).clone();
+    let model = engine::resolve(&p.model, p.custom_model.as_deref());
+    let (Some((samples, rate)), Some(model)) = (captured, model) else {
+        close_pill(cx, handle);
+        return;
+    };
+    if p.sound_cues {
+        play(Cue::Stop);
     }
+    let _ = handle.update(cx, |pill, _, cx| {
+        pill.transcribing = Some(Instant::now());
+        cx.notify();
+    });
+    let settings = pipeline::Settings {
+        style: p.style,
+        shortcuts: crate::main_window::load_shortcuts(),
+        words: crate::main_window::load_words(),
+        language: p.language.clone(),
+    };
+    let label = engine::model_info(&p.model)
+        .map(|m| m.name.to_string())
+        .unwrap_or_else(|| {
+            model.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+        });
+    cx.spawn(async move |cx| {
+        let result = cx
+            .background_executor()
+            .spawn(async move { pipeline::run(&model, &samples, rate, &settings) })
+            .await;
+        let _ = cx.update(|cx| {
+            close_pill(cx, handle);
+            match result {
+                Ok(Some(out)) => {
+                    paste::deliver(cx, &out.text, p.paste);
+                    history::add(cx, &out.text, out.seconds, &label);
+                }
+                Ok(None) => {}
+                Err(err) => eprintln!("hush: transcription failed: {err}"),
+            }
+        });
+    })
+    .detach();
+}
+
+/// Fade the pill out, then close its window.
+fn close_pill(cx: &mut App, handle: WindowHandle<RecordingPill>) {
+    let _ = handle.update(cx, |pill, _, cx| {
+        pill.meter = None;
+        pill.closing_at = Some(Instant::now());
+        cx.notify();
+    });
+    cx.spawn(async move |cx| {
+        Timer::after(Duration::from_millis(EXIT_MS as u64 + 20)).await;
+        let _ = handle.update(cx, |_, window, _| window.remove_window());
+    })
+    .detach();
 }
 
 fn apply_overlay_dwm(_window: &Window) {
