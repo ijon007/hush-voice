@@ -16,7 +16,8 @@ pub(crate) enum OverlayPosition {
 pub(crate) enum Style {
     Formal,
     Casual,
-    Verbatim,
+    /// Shown as "Lowercase"; stored as "verbatim" for old settings files.
+    Lowercase,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -120,7 +121,7 @@ fn load() -> Prefs {
             "style" => {
                 p.style = match value {
                     "casual" => Style::Casual,
-                    "verbatim" => Style::Verbatim,
+                    "verbatim" | "lowercase" => Style::Lowercase,
                     _ => Style::Formal,
                 }
             }
@@ -155,7 +156,7 @@ fn save(p: &Prefs) {
         match p.style {
             Style::Formal => "formal",
             Style::Casual => "casual",
-            Style::Verbatim => "verbatim",
+            Style::Lowercase => "verbatim",
         },
         p.custom_model.as_deref().unwrap_or(""),
         p.language,

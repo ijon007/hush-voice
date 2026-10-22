@@ -11,13 +11,14 @@ use crate::prefs::{Style, prefs, update_prefs};
 use crate::theme::{RADIUS_PX, Theme, theme};
 use crate::widgets::{ease_strong, selection_dot};
 
-/// One sentence, as spoken, rendered in each style.
+/// One sentence, as spoken, rendered in each style. Every style drops
+/// the fillers (um, uh).
 const SPOKEN: &str = "um so i think we should, uh, ship the build on Friday. what do you think?";
 
 const STYLES: [(Style, &str, &str); 3] = [
-    (Style::Formal, "Formal", "Full sentences, capitalized and punctuated. Fillers removed."),
-    (Style::Casual, "Casual", "Reads like a text. Lowercase starts, fillers removed."),
-    (Style::Verbatim, "Verbatim", "Exactly what you said, every um and uh kept."),
+    (Style::Formal, "Formal", "Capitalized and fully punctuated, with a closing period."),
+    (Style::Casual, "Casual", "Capitalized, no commas or dashes. Only . ? ! end sentences."),
+    (Style::Lowercase, "Lowercase", "All lowercase, no commas or dashes. Only . ? ! end sentences."),
 ];
 
 impl MainWindow {

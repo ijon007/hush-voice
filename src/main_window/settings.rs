@@ -477,7 +477,7 @@ impl MainWindow {
         let style = match p.style {
             crate::prefs::Style::Formal => "Formal",
             crate::prefs::Style::Casual => "Casual",
-            crate::prefs::Style::Verbatim => "Verbatim",
+            crate::prefs::Style::Lowercase => "Lowercase",
         };
         // Language only matters for multilingual models.
         let multilingual = match engine::resolve(&p.model, p.custom_model.as_deref()) {

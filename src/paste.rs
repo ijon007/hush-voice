@@ -10,8 +10,11 @@ pub(crate) fn deliver(cx: &mut App, text: &str, paste: bool) {
         cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()));
         return;
     }
+    // Lead with a space so back-to-back dictations don't glue together
+    // ("working.Alright").
+    let text = if text.starts_with(char::is_whitespace) { text.to_string() } else { format!(" {text}") };
     let saved = cx.read_from_clipboard();
-    cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()));
+    cx.write_to_clipboard(ClipboardItem::new_string(text));
     send_ctrl_v();
     cx.spawn(async move |cx| {
         Timer::after(Duration::from_millis(300)).await;
