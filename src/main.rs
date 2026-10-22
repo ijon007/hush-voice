@@ -12,6 +12,7 @@ mod pipeline;
 mod prefs;
 mod sounds;
 mod theme;
+mod update;
 mod widgets;
 
 use gpui::{
@@ -39,6 +40,7 @@ fn main() {
         let keep = prefs::prefs(cx).keep_history;
         history::init(cx, keep);
         register_hotkey(cx);
+        update::init(cx);
 
         let bounds = Bounds::centered(None, size(px(820.), px(600.)), cx);
         cx.open_window(

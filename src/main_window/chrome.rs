@@ -38,6 +38,23 @@ impl MainWindow {
                             .child("Hush"),
                     ),
             )
+            .when_some(crate::update::updates(cx).available.clone(), |el, release| {
+                // Subtle link; outside the drag area so it takes clicks.
+                el.child(
+                    div()
+                        .id("update-link")
+                        .mr(px(8.))
+                        .px(px(8.))
+                        .py(px(3.))
+                        .rounded_full()
+                        .text_size(px(12.))
+                        .text_color(t.text_muted)
+                        .hover(move |s| s.text_color(t.text).bg(t.surface_hover))
+                        .cursor_pointer()
+                        .child(format!("Update available \u{00b7} v{}", release.version))
+                        .on_click(move |_, _, cx| cx.open_url(&release.url)),
+                )
+            })
             .child(window_btn(t, "win-min", "\u{2014}", |window, _| {
                 window.minimize_window();
             }))

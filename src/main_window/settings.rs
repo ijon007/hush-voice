@@ -298,18 +298,34 @@ impl MainWindow {
             .child(self.render_about(t, cx))
     }
 
-    fn render_about(&self, t: Theme, _cx: &mut Context<Self>) -> impl IntoElement {
-        group(
-            t,
-            "About",
-            vec![setting_row(
-                t,
-                "Version",
-                format!("Hush {}", env!("CARGO_PKG_VERSION")),
-                div(),
-                false,
-            )],
-        )
+    fn render_about(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
+        use crate::update::{Status, VERSION, check, updates};
+        let u = updates(cx);
+        let (detail, control): (SharedString, AnyElement) = match (&u.available, u.status) {
+            (Some(r), _) => {
+                let url = r.url.clone();
+                (
+                    format!("Hush {VERSION} \u{00b7} version {} is available", r.version).into(),
+                    outline_button(t, "open-update", "Get update")
+                        .on_click(move |_, _, cx| cx.open_url(&url))
+                        .into_any_element(),
+                )
+            }
+            (None, status) => (
+                match status {
+                    Status::Checking => format!("Hush {VERSION} \u{00b7} checking\u{2026}"),
+                    Status::UpToDate => format!("Hush {VERSION} \u{00b7} you're up to date"),
+                    Status::Failed => format!("Hush {VERSION} \u{00b7} couldn't reach GitHub"),
+                    Status::Idle => format!("Hush {VERSION}"),
+                }
+                .into(),
+                outline_button(t, "check-update", "Check for updates")
+                    .when(status == Status::Checking, |el| el.opacity(0.5))
+                    .on_click(|_, _, cx| check(cx))
+                    .into_any_element(),
+            ),
+        };
+        group(t, "About", vec![setting_row(t, "Version", detail, control, false)])
     }
 
     fn render_history_settings(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
