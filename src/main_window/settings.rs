@@ -8,7 +8,7 @@ use gpui::{
 use crate::main_window::MainWindow;
 use crate::models::{ModelOption, Page};
 use crate::prefs::{OverlayPosition, autostart, prefs, update_prefs};
-use crate::theme::{RADIUS_SM_PX, Theme, ThemeMode, set_theme_mode, theme, theme_mode};
+use crate::theme::{RADIUS_PX, RADIUS_SM_PX, Theme, ThemeMode, set_theme_mode, theme, theme_mode};
 use crate::widgets::{card, ease_strong, section_label, selection_dot};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -342,6 +342,8 @@ impl MainWindow {
             .gap(px(24.))
             .px(px(16.))
             .py(px(12.))
+            .when(index == 0, |el| el.rounded_t(px(RADIUS_PX - 1.)))
+            .when(!divider, |el| el.rounded_b(px(RADIUS_PX - 1.)))
             .when(divider, |el| el.border_b_1().border_color(t.border))
             .when(!selected, |el| el.hover(move |s| s.bg(t.surface_hover)))
             .active(move |s| s.bg(t.surface_active))
@@ -503,6 +505,9 @@ impl MainWindow {
             .justify_between()
             .px(px(16.))
             .py(px(14.))
+            // GPUI doesn't clip child fills to the card radius: round the ends.
+            .when(index == 0, |el| el.rounded_t(px(RADIUS_PX - 1.)))
+            .when(!show_divider, |el| el.rounded_b(px(RADIUS_PX - 1.)))
             .when(show_divider, |el| el.border_b_1().border_color(t.border))
             .when(selected, |el| el.bg(t.surface_selected))
             .when(!selected, |el| el.hover(move |s| s.bg(t.surface_hover)))
