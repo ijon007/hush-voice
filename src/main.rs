@@ -42,7 +42,8 @@ fn main() {
         register_hotkey(cx);
         update::init(cx);
 
-        let bounds = Bounds::centered(None, size(px(820.), px(600.)), cx);
+        let (w, h) = window_size(cx);
+        let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -53,7 +54,7 @@ fn main() {
                 }),
                 is_resizable: false,
                 is_minimizable: true,
-                window_min_size: Some(size(px(1042.), px(756.))),
+                window_min_size: Some(size(px(MIN_W.min(w)), px(MIN_H.min(h)))),
                 ..Default::default()
             },
             |window, cx| cx.new(|cx| MainWindow::new(window, cx)),
@@ -66,6 +67,58 @@ fn main() {
 
         cx.activate(true);
     });
+}
+
+/// Designed size of the main window (logical px).
+const WINDOW_W: f32 = 1042.;
+const WINDOW_H: f32 = 756.;
+/// Smallest the layout still works at.
+const MIN_W: f32 = 760.;
+const MIN_H: f32 = 520.;
+
+/// Designed size, shrunk to fit the monitor's work area (taskbar excluded).
+/// At 125% on a 1366x768 laptop the designed height doesn't fit.
+fn window_size(cx: &App) -> (f32, f32) {
+    let Some((aw, ah)) = work_area(cx) else { return (WINDOW_W, WINDOW_H) };
+    // Leave a margin so the window doesn't touch the screen edges.
+    let w = WINDOW_W.min(aw - 32.).max(MIN_W.min(aw));
+    let h = WINDOW_H.min(ah - 32.).max(MIN_H.min(ah));
+    (w, h)
+}
+
+/// Primary monitor work area in logical px.
+#[cfg(windows)]
+fn work_area(cx: &App) -> Option<(f32, f32)> {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SPI_GETWORKAREA, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW,
+    };
+    let mut r = RECT::default();
+    unsafe {
+        SystemParametersInfoW(
+            SPI_GETWORKAREA,
+            0,
+            Some(&mut r as *mut RECT as *mut _),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        )
+        .ok()?;
+    }
+    // Work area is in physical px; the display bounds tell us the scale.
+    let display = cx.primary_display()?;
+    let logical_w = f32::from(display.bounds().size.width);
+    let phys_w = unsafe {
+        windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(
+            windows::Win32::UI::WindowsAndMessaging::SM_CXSCREEN,
+        )
+    } as f32;
+    let scale = if logical_w > 0. && phys_w > 0. { phys_w / logical_w } else { 1. };
+    Some(((r.right - r.left) as f32 / scale, (r.bottom - r.top) as f32 / scale))
+}
+
+#[cfg(not(windows))]
+fn work_area(cx: &App) -> Option<(f32, f32)> {
+    let s = cx.primary_display()?.bounds().size;
+    Some((f32::from(s.width), f32::from(s.height) - 48.))
 }
 
 fn cli_transcribe(wav: &str, model: Option<&str>, lang: Option<String>) -> i32 {
