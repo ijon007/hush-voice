@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, App, ElementId, FontWeight, MouseButton, Window, div, ease_out_quint,
-    prelude::*, px, rgb,
+    Animation, AnimationExt, App, ElementId, FontWeight, MouseButton, SharedString, Window, div,
+    ease_out_quint, prelude::*, px, rgb,
 };
 
 use crate::theme::{RADIUS_PX, Theme};
@@ -91,7 +91,11 @@ pub(crate) fn card(t: Theme) -> gpui::Div {
         .overflow_hidden()
 }
 
-pub(crate) fn empty_state(t: Theme, title: &'static str, body: &'static str) -> impl IntoElement {
+pub(crate) fn empty_state(
+    t: Theme,
+    title: &'static str,
+    body: impl Into<SharedString>,
+) -> impl IntoElement {
     card(t)
         .items_center()
         .justify_center()
@@ -104,7 +108,7 @@ pub(crate) fn empty_state(t: Theme, title: &'static str, body: &'static str) -> 
                 .text_color(t.text)
                 .child(title),
         )
-        .child(div().text_size(px(13.)).text_color(t.text_muted).child(body))
+        .child(div().text_size(px(13.)).text_color(t.text_muted).child(body.into()))
 }
 
 /// Staggered entrance: fades (and optionally lifts) an element in after

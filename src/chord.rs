@@ -14,6 +14,12 @@ pub(crate) struct Chord {
 pub(crate) const DEFAULT_HOLD: &str = "Ctrl + Space";
 pub(crate) const DEFAULT_TOGGLE: &str = "Ctrl + Win + Alt";
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HotkeySlot {
+    Hold,
+    Toggle,
+}
+
 impl Chord {
     pub(crate) fn hold_default() -> Self {
         Self::parse(DEFAULT_HOLD).expect("default hold")

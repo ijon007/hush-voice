@@ -10,10 +10,11 @@ use gpui::{
 
 use crate::main_window::pages::{page, page_header};
 use crate::main_window::MainWindow;
+use crate::text_field;
 use crate::theme::{RADIUS_SM_PX, Theme, app_dir, theme};
 use crate::widgets::{empty_state, fade_in};
 
-const MAX_LEN: usize = 48;
+pub(super) const MAX_LEN: usize = 48;
 const DIALOG_MS: u64 = 200;
 
 pub(crate) fn load_words() -> Vec<String> {
@@ -118,7 +119,6 @@ impl MainWindow {
     }
 
     fn dict_search_field(&self, t: Theme, focused: bool, cx: &mut Context<Self>) -> impl IntoElement {
-        let placeholder = self.dict_query.is_empty();
         div()
             .id("dictionary-query")
             .flex()
@@ -146,32 +146,7 @@ impl MainWindow {
                     .flex_none()
                     .text_color(if focused { t.text_secondary } else { t.text_muted }),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_w(px(0.))
-                    .items_center()
-                    .overflow_hidden()
-                    .text_size(px(13.))
-                    .line_height(px(18.))
-                    .when(!placeholder, |el| {
-                        el.child(
-                            div()
-                                .text_color(t.text)
-                                .when(self.dict_replace, |text| {
-                                    text.bg(t.surface_active).rounded(px(3.)).px(px(2.))
-                                })
-                                .child(SharedString::from(self.dict_query.clone())),
-                        )
-                    })
-                    .when(focused && !self.dict_replace, |el| {
-                        el.child(div().w(px(1.5)).h(px(14.)).flex_none().bg(t.text))
-                    })
-                    .when(placeholder, |el| {
-                        el.child(div().text_color(t.text_muted).child("Search dictionary"))
-                    }),
-            )
+            .child(text_field::paint(&self.dict_query, focused, "Search dictionary", t))
     }
 
     fn add_word_button(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
@@ -244,73 +219,23 @@ impl MainWindow {
             )
     }
 
-    // ponytail: caret stays at the end of the field. Click-to-place and IME
-    // composition need an EntityInputHandler, as in GPUI's input example.
     fn on_dict_search_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if !self.dict_focus.is_focused(window) {
             return;
         }
-        let ks = &event.keystroke;
-        if ks.modifiers.control || ks.modifiers.platform {
-            match ks.key.as_str() {
-                "a" => self.dict_replace = !self.dict_query.is_empty(),
-                "v" => {
-                    if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-                        self.push_dict_search_text(&text);
-                    }
-                }
-                _ => return,
-            }
+        if text_field::apply_key(&mut self.dict_query, &event.keystroke, cx) {
             cx.stop_propagation();
             cx.notify();
             return;
         }
-        match ks.key.as_str() {
-            "backspace" => {
-                if self.dict_replace || ks.modifiers.alt {
-                    self.dict_query.clear();
-                } else {
-                    self.dict_query.pop();
-                }
-                self.dict_replace = false;
+        if event.keystroke.key == "escape" {
+            if self.dict_query.is_empty() {
+                window.blur();
+            } else {
+                self.dict_query.clear();
             }
-            "escape" => {
-                if self.dict_query.is_empty() {
-                    window.blur();
-                } else {
-                    self.dict_query.clear();
-                    self.dict_replace = false;
-                }
-            }
-            _ => {
-                let typed = ks.key_char.clone().or_else(|| (ks.key.as_str() == "space").then(|| " ".to_string()));
-                let Some(typed) = typed else { return };
-                if typed == "\n" || typed == "\t" || typed == "\r" {
-                    return;
-                }
-                self.push_dict_search_text(&typed);
-            }
-        }
-        cx.stop_propagation();
-        cx.notify();
-    }
-
-    fn push_dict_search_text(&mut self, extra: &str) {
-        if self.dict_replace {
-            self.dict_query.clear();
-            self.dict_replace = false;
-        }
-        for ch in extra.chars() {
-            if ch == '\n' || ch == '\r' || ch == '\t' {
-                if !self.dict_query.is_empty() && !self.dict_query.ends_with(' ') {
-                    self.dict_query.push(' ');
-                }
-                continue;
-            }
-            if self.dict_query.chars().count() >= 64 {
-                break;
-            }
-            self.dict_query.push(ch);
+            cx.stop_propagation();
+            cx.notify();
         }
     }
 
@@ -320,7 +245,6 @@ impl MainWindow {
             return;
         }
         self.dict_draft.clear();
-        self.dict_dialog_replace = false;
         self.dict_dialog_closing = false;
         self.dict_dialog = true;
         self.dict_dialog_nonce += 1;
@@ -455,7 +379,6 @@ impl MainWindow {
 
     fn dict_dialog_field(&self, t: Theme, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focused = self.dict_word_focus.is_focused(window);
-        let empty = self.dict_draft.is_empty();
         div()
             .flex()
             .flex_col()
@@ -483,37 +406,11 @@ impl MainWindow {
                     .track_focus(&self.dict_word_focus)
                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
                         cx.stop_propagation();
-                        this.dict_dialog_replace = false;
                         window.focus(&this.dict_word_focus);
                         cx.notify();
                     }))
                     .on_key_down(cx.listener(Self::on_dict_dialog_key))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_1()
-                            .min_w(px(0.))
-                            .items_center()
-                            .overflow_hidden()
-                            .text_size(px(13.))
-                            .line_height(px(18.))
-                            .when(!empty, |el| {
-                                el.child(
-                                    div()
-                                        .text_color(t.text)
-                                        .when(focused && self.dict_dialog_replace, |text| {
-                                            text.bg(t.surface_active).rounded(px(3.)).px(px(2.))
-                                        })
-                                        .child(SharedString::from(self.dict_draft.clone())),
-                                )
-                            })
-                            .when(focused && !self.dict_dialog_replace, |el| {
-                                el.child(div().w(px(1.5)).h(px(14.)).flex_none().bg(t.text))
-                            })
-                            .when(empty, |el| {
-                                el.child(div().text_color(t.text_muted).child("Hush Voice"))
-                            }),
-                    ),
+                    .child(text_field::paint(&self.dict_draft, focused, "Hush Voice", t)),
             )
     }
 
@@ -564,62 +461,18 @@ impl MainWindow {
         if !self.dict_word_focus.is_focused(window) {
             return;
         }
-        let ks = &event.keystroke;
-        if ks.modifiers.control || ks.modifiers.platform {
-            match ks.key.as_str() {
-                "a" => self.dict_dialog_replace = !self.dict_draft.is_empty(),
-                "v" => {
-                    if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-                        self.push_dict_draft_text(&text);
-                    }
-                }
-                _ => return,
-            }
+        if text_field::apply_key(&mut self.dict_draft, &event.keystroke, cx) {
             cx.stop_propagation();
             cx.notify();
             return;
         }
-        match ks.key.as_str() {
-            "backspace" => {
-                if self.dict_dialog_replace || ks.modifiers.alt {
-                    self.dict_draft.clear();
-                } else {
-                    self.dict_draft.pop();
-                }
-                self.dict_dialog_replace = false;
-            }
+        match event.keystroke.key.as_str() {
             "enter" => self.confirm_dict_dialog(window, cx),
             "escape" => self.dismiss_dict_dialog(window, cx),
-            _ => {
-                let typed = ks.key_char.clone().or_else(|| (ks.key.as_str() == "space").then(|| " ".to_string()));
-                let Some(typed) = typed else { return };
-                if typed == "\n" || typed == "\t" || typed == "\r" {
-                    return;
-                }
-                self.push_dict_draft_text(&typed);
-            }
+            _ => return,
         }
         cx.stop_propagation();
         cx.notify();
-    }
-
-    fn push_dict_draft_text(&mut self, extra: &str) {
-        if self.dict_dialog_replace {
-            self.dict_draft.clear();
-            self.dict_dialog_replace = false;
-        }
-        for ch in extra.chars() {
-            if ch == '\n' || ch == '\r' || ch == '\t' {
-                if !self.dict_draft.is_empty() && !self.dict_draft.ends_with(' ') {
-                    self.dict_draft.push(' ');
-                }
-                continue;
-            }
-            if self.dict_draft.chars().count() >= MAX_LEN {
-                break;
-            }
-            self.dict_draft.push(ch);
-        }
     }
 }
 

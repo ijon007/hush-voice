@@ -1,10 +1,11 @@
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, Context, FontWeight, SharedString, div, prelude::*, px,
-    svg,
+    Animation, AnimationExt, AnyElement, Context, FontWeight, KeyDownEvent, MouseButton,
+    SharedString, Window, div, prelude::*, px, svg,
 };
 
+use crate::chord::{Chord, HotkeySlot};
 use crate::main_window::MainWindow;
 use crate::engine;
 use crate::models::Page;
@@ -199,7 +200,7 @@ impl MainWindow {
             SettingsTab::General => self.render_general(t, cx).into_any_element(),
             SettingsTab::Audio => self.render_audio(t, cx).into_any_element(),
             SettingsTab::Dictation => self.render_dictation(t, cx).into_any_element(),
-            SettingsTab::Shortcuts => group(t, "Shortcuts", vec![self.render_hotkey(t).into_any_element()])
+            SettingsTab::Shortcuts => group(t, "Shortcuts", vec![self.render_hotkey(t, cx).into_any_element()])
                 .into_any_element(),
             SettingsTab::Appearance => self.render_appearance(t, cx).into_any_element(),
         };
@@ -837,55 +838,230 @@ impl MainWindow {
             .into_any_element()
     }
 
-    fn render_hotkey(&self, t: Theme) -> impl IntoElement {
-        let hold: Vec<SharedString> =
-            self.hotkey.split(" + ").map(|k| SharedString::from(k.to_string())).collect();
+    fn render_hotkey(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
+        let hold = prefs(cx).hold_chord();
+        let toggle = prefs(cx).toggle_chord();
         div()
             .flex()
             .flex_col()
-            .child(shortcut_row(t, "Hold to dictate", "Hold to record, release to stop", hold, true))
-            .child(shortcut_row(
+            .child(self.shortcut_row(
                 t,
+                HotkeySlot::Hold,
+                "Hold to dictate",
+                "Hold to record, release to stop",
+                hold,
+                true,
+                cx,
+            ))
+            .child(self.shortcut_row(
+                t,
+                HotkeySlot::Toggle,
                 "Toggle dictation",
                 "Press to lock recording on, press again to stop",
-                vec!["Ctrl".into(), "Win".into(), "Alt".into()],
+                toggle,
                 false,
+                cx,
             ))
+    }
+
+    fn shortcut_row(
+        &self,
+        t: Theme,
+        slot: HotkeySlot,
+        title: &'static str,
+        detail: &'static str,
+        saved: Chord,
+        divider: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let editing = self.hotkey_edit == Some(slot);
+        div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap(px(16.))
+            .px(px(16.))
+            .py(px(14.))
+            .when(divider, |el| el.border_b_1().border_color(t.border))
+            .child(row_text(t, title, detail))
+            .child(self.shortcut_editor(t, slot, saved, editing, cx))
+    }
+
+    fn shortcut_editor(
+        &self,
+        t: Theme,
+        slot: HotkeySlot,
+        saved: Chord,
+        editing: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let focus = match slot {
+            HotkeySlot::Hold => &self.hold_focus,
+            HotkeySlot::Toggle => &self.toggle_focus,
+        };
+        let shown = if editing { self.hotkey_draft.clone() } else { saved };
+        let empty = shown.is_empty();
+        let id = match slot {
+            HotkeySlot::Hold => "hold-shortcut",
+            HotkeySlot::Toggle => "toggle-shortcut",
+        };
+        div()
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .child(
+                div()
+                    .id(id)
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .max_w(px(240.))
+                    .min_h(px(34.))
+                    .px(px(8.))
+                    .py(px(6.))
+                    .rounded(px(RADIUS_SM_PX))
+                    .bg(t.input_bg)
+                    .border_1()
+                    .border_color(if editing { t.primary } else { t.border_strong })
+                    .flex_wrap()
+                    .cursor_pointer()
+                    .track_focus(focus)
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.begin_hotkey_edit(slot, window, cx)
+                    }))
+                    .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+                        if this.hotkey_edit != Some(slot) {
+                            return;
+                        }
+                        this.on_hotkey_key(event, window, cx);
+                    }))
+                    .when(empty && editing, |el| {
+                        el.child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(t.text_muted)
+                                .child("Press keys\u{2026}"),
+                        )
+                    })
+                    .when(!empty, |el| {
+                        el.children(shown.labels().into_iter().map(move |label| keycap(t, label)))
+                    }),
+            )
+            .when(editing && !empty, |el| el.child(self.hotkey_tick(t, cx)))
+    }
+
+    fn hotkey_tick(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .id("hotkey-tick")
+            .size(px(22.))
+            .flex_none()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(6.))
+            .hover(move |s| s.bg(t.surface_hover))
+            .active(|s| s.opacity(0.8))
+            .cursor_pointer()
+            .child(svg().path("icons/check.svg").size(px(12.)).text_color(t.text))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(cx.listener(|this, _, window, cx| {
+                cx.stop_propagation();
+                this.commit_hotkey(cx);
+                window.blur();
+            }))
+    }
+
+    pub(super) fn begin_hotkey_edit(&mut self, slot: HotkeySlot, window: &mut Window, cx: &mut Context<Self>) {
+        if self.hotkey_edit.is_some() && self.hotkey_edit != Some(slot) {
+            self.commit_hotkey(cx);
+        }
+        self.hotkey_edit = Some(slot);
+        self.hotkey_draft = Chord::default();
+        crate::hotkey::set_capturing(cx, true);
+        let handle = match slot {
+            HotkeySlot::Hold => &self.hold_focus,
+            HotkeySlot::Toggle => &self.toggle_focus,
+        };
+        window.focus(handle);
+        cx.notify();
+    }
+
+    pub(super) fn commit_hotkey(&mut self, cx: &mut Context<Self>) {
+        let Some(slot) = self.hotkey_edit.take() else { return };
+        crate::hotkey::set_capturing(cx, false);
+        let draft = std::mem::take(&mut self.hotkey_draft);
+        if !draft.is_empty() {
+            let other = match slot {
+                HotkeySlot::Hold => prefs(cx).toggle_chord(),
+                HotkeySlot::Toggle => prefs(cx).hold_chord(),
+            };
+            if draft != other {
+                let text = draft.display();
+                update_prefs(cx, move |p| match slot {
+                    HotkeySlot::Hold => p.hold_shortcut = text.clone(),
+                    HotkeySlot::Toggle => p.toggle_shortcut = text.clone(),
+                });
+                crate::hotkey::reload(cx);
+            }
+        }
+        cx.notify();
+    }
+
+    fn on_hotkey_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let ks = &event.keystroke;
+        if ks.key == "escape" {
+            self.hotkey_edit = None;
+            self.hotkey_draft = Chord::default();
+            crate::hotkey::set_capturing(cx, false);
+            window.blur();
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
+        if ks.key == "enter" {
+            self.commit_hotkey(cx);
+            window.blur();
+            cx.stop_propagation();
+            return;
+        }
+        self.hotkey_draft = Chord::from_keystroke(
+            ks.modifiers.control,
+            ks.modifiers.alt,
+            ks.modifiers.shift,
+            ks.modifiers.platform,
+            &ks.key,
+        );
+        cx.stop_propagation();
+        cx.notify();
     }
 }
 
-/// One shortcut row: title/detail on the left, key caps on the right.
-fn shortcut_row(
-    t: Theme,
-    title: &'static str,
-    detail: &'static str,
-    keys: Vec<SharedString>,
-    divider: bool,
-) -> impl IntoElement {
+/// Physical-looking keycap: raised face sitting on a darker lip.
+fn keycap(t: Theme, label: impl Into<SharedString>) -> impl IntoElement {
     div()
-        .flex()
-        .items_center()
-        .justify_between()
-        .px(px(16.))
-        .py(px(14.))
-        .when(divider, |el| el.border_b_1().border_color(t.border))
-        .child(row_text(t, title, detail))
-        .child(div().flex().items_center().gap(px(4.)).children(keys.into_iter().map(move |k| {
+        .flex_none()
+        .rounded(px(6.))
+        .bg(t.border_strong)
+        .pb(px(2.))
+        .child(
             div()
-                .min_w(px(26.))
-                .flex()
-                .justify_center()
-                .px(px(8.))
-                .py(px(4.))
-                .rounded(px(RADIUS_SM_PX))
-                .bg(t.track)
+                .min_w(px(22.))
+                .h(px(22.))
+                .px(px(7.))
+                .rounded(px(5.))
+                .bg(if t.bg == Theme::DARK.bg { t.surface_hover } else { t.surface })
                 .border_1()
-                .border_color(t.border_strong)
-                .text_size(px(12.))
-                .font_weight(FontWeight::MEDIUM)
+                .border_color(t.border)
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_size(px(11.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .line_height(px(14.))
                 .text_color(t.text)
-                .child(k)
-        })))
+                .child(label.into()),
+        )
 }
 
 /// Tiny Home tab, painted in a fixed palette so Light and Dark can sit side by side.

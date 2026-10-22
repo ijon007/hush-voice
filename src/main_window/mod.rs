@@ -12,19 +12,20 @@ pub(crate) use shortcuts::load_shortcuts;
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, ClipboardItem, Context, FocusHandle, SharedString, Subscription, Timer,
+    Animation, AnimationExt, ClipboardItem, Context, FocusHandle, Subscription, Timer,
     Window, div, ease_out_quint, prelude::*, px,
 };
 
+use crate::chord::{Chord, HotkeySlot};
 use crate::models::{Page, Shortcut, TranscriptRow};
 use crate::overlay::audio::{MicMeter, input_device_names};
 use crate::prefs::{prefs, update_prefs};
+use crate::text_field::Field;
 use crate::theme::theme;
 use settings::SettingsTab;
 
 pub(crate) struct MainWindow {
     page: Page,
-    hotkey: SharedString,
     history: Vec<TranscriptRow>,
     /// History row whose text was just copied (shows a check for ~1.2s).
     copied: Option<usize>,
@@ -37,9 +38,7 @@ pub(crate) struct MainWindow {
     /// Bumped when the selected model changes so the radio dot scales in.
     dot_nonce: usize,
     shortcuts: Vec<Shortcut>,
-    shortcut_query: String,
-    /// Next typed character replaces the shortcut search field (Ctrl+A).
-    shortcut_replace: bool,
+    shortcut_query: Field,
     shortcut_focus: FocusHandle,
     /// Trigger that just landed in the grid, so its card can rise in once.
     shortcut_added: Option<String>,
@@ -48,16 +47,13 @@ pub(crate) struct MainWindow {
     dialog_closing: bool,
     dialog_epoch: usize,
     dialog_nonce: usize,
-    dialog_word: String,
-    dialog_shortcut: String,
-    dialog_replace: bool,
+    dialog_word: Field,
+    dialog_shortcut: Field,
     word_focus: FocusHandle,
     dialog_shortcut_focus: FocusHandle,
     /// Custom spellings. Speech models read the saved list when a token is uncertain.
     words: Vec<String>,
-    dict_query: String,
-    /// Next typed character replaces the dictionary query (Ctrl+A).
-    dict_replace: bool,
+    dict_query: Field,
     dict_focus: FocusHandle,
     /// Word that just landed in the grid, so its card can rise in once.
     just_added: Option<String>,
@@ -66,8 +62,7 @@ pub(crate) struct MainWindow {
     dict_dialog_closing: bool,
     dict_dialog_epoch: usize,
     dict_dialog_nonce: usize,
-    dict_draft: String,
-    dict_dialog_replace: bool,
+    dict_draft: Field,
     dict_word_focus: FocusHandle,
     settings_tab: SettingsTab,
     /// Bumped on tab switch so the body cross-fades.
@@ -87,6 +82,12 @@ pub(crate) struct MainWindow {
     default_mic: Option<String>,
     mic_nonce: usize,
     style_nonce: usize,
+    hold_focus: FocusHandle,
+    toggle_focus: FocusHandle,
+    hotkey_edit: Option<HotkeySlot>,
+    hotkey_draft: Chord,
+    _hold_blur: Subscription,
+    _toggle_blur: Subscription,
     _appearance: Subscription,
 }
 
@@ -103,9 +104,12 @@ impl MainWindow {
                 true
             }
         });
+        let hold_focus = cx.focus_handle();
+        let toggle_focus = cx.focus_handle();
+        let hold_blur = cx.on_blur(&hold_focus, window, |this, _, cx| this.commit_hotkey(cx));
+        let toggle_blur = cx.on_blur(&toggle_focus, window, |this, _, cx| this.commit_hotkey(cx));
         Self {
             page: Page::Home,
-            hotkey: "Ctrl + Space".into(),
             history: Vec::new(),
             copied: None,
             icon_applied: false,
@@ -113,8 +117,7 @@ impl MainWindow {
             nav_count: 0,
             dot_nonce: 0,
             shortcuts: shortcuts::load_shortcuts(),
-            shortcut_query: String::new(),
-            shortcut_replace: false,
+            shortcut_query: Field::new(64),
             shortcut_focus: cx.focus_handle(),
             shortcut_added: None,
             shortcut_nonce: 0,
@@ -122,14 +125,12 @@ impl MainWindow {
             dialog_closing: false,
             dialog_epoch: 0,
             dialog_nonce: 0,
-            dialog_word: String::new(),
-            dialog_shortcut: String::new(),
-            dialog_replace: false,
+            dialog_word: Field::new(shortcuts::TRIGGER_MAX),
+            dialog_shortcut: Field::new(shortcuts::EXPANSION_MAX),
             word_focus: cx.focus_handle(),
             dialog_shortcut_focus: cx.focus_handle(),
             words: dictionary::load_words(),
-            dict_query: String::new(),
-            dict_replace: false,
+            dict_query: Field::new(64),
             dict_focus: cx.focus_handle(),
             just_added: None,
             dict_nonce: 0,
@@ -137,8 +138,7 @@ impl MainWindow {
             dict_dialog_closing: false,
             dict_dialog_epoch: 0,
             dict_dialog_nonce: 0,
-            dict_draft: String::new(),
-            dict_dialog_replace: false,
+            dict_draft: Field::new(dictionary::MAX_LEN),
             dict_word_focus: cx.focus_handle(),
             settings_tab: SettingsTab::General,
             tab_nonce: 0,
@@ -152,6 +152,12 @@ impl MainWindow {
             default_mic: None,
             mic_nonce: 0,
             style_nonce: 0,
+            hold_focus,
+            toggle_focus,
+            hotkey_edit: None,
+            hotkey_draft: Chord::default(),
+            _hold_blur: hold_blur,
+            _toggle_blur: toggle_blur,
             _appearance: appearance,
         }
     }

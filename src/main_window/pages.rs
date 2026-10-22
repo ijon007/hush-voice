@@ -7,10 +7,15 @@ use gpui::{
 
 use crate::main_window::MainWindow;
 use crate::models::{TranscriptRow, compute_stats};
+use crate::prefs::prefs;
 use crate::theme::{RADIUS_PX, Theme, theme};
 use crate::widgets::{card, empty_state, fade_in, section_label};
 
-pub(super) fn page_header(t: Theme, title: &'static str, subtitle: &'static str) -> impl IntoElement {
+pub(super) fn page_header(
+    t: Theme,
+    title: &'static str,
+    subtitle: impl Into<SharedString>,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -24,7 +29,7 @@ pub(super) fn page_header(t: Theme, title: &'static str, subtitle: &'static str)
                 .text_color(t.text)
                 .child(title),
         )
-        .child(div().text_size(px(13.)).text_color(t.text_muted).child(subtitle))
+        .child(div().text_size(px(13.)).text_color(t.text_muted).child(subtitle.into()))
 }
 
 pub(super) fn page() -> gpui::Div {
@@ -37,7 +42,11 @@ impl MainWindow {
         let p = crate::prefs::prefs(cx).clone();
         let ready = crate::engine::resolve(&p.model, p.custom_model.as_deref()).is_some();
         page()
-            .child(page_header(t, "Welcome back!", "Hold Ctrl + Space to dictate"))
+            .child(page_header(
+                t,
+                "Welcome back!",
+                format!("Hold {} to dictate", p.hold_chord().display()),
+            ))
             .when(!ready, |el| el.child(self.render_setup(t, cx)))
             .child(self.render_stats(t))
             .child(
@@ -114,7 +123,11 @@ impl MainWindow {
     /// Grouped transcript list: one surface, hairline dividers, copy on hover.
     fn render_history(&self, t: Theme, cx: &mut Context<Self>) -> gpui::AnyElement {
         if self.history.is_empty() {
-            return empty_state(t, "No dictations yet", "Hold Ctrl + Space, speak, and let go")
+            return empty_state(
+                t,
+                "No dictations yet",
+                format!("Hold {}, speak, and let go", prefs(cx).hold_chord().display()),
+            )
                 .into_any_element();
         }
         let last = self.history.len() - 1;

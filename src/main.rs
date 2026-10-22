@@ -13,6 +13,7 @@ mod overlay;
 mod pipeline;
 mod prefs;
 mod sounds;
+mod text_field;
 mod theme;
 mod tray;
 mod update;

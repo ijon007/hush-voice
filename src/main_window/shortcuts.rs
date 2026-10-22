@@ -11,11 +11,12 @@ use gpui::{
 use crate::main_window::pages::{page, page_header};
 use crate::main_window::MainWindow;
 use crate::models::Shortcut;
+use crate::text_field::{self, Field};
 use crate::theme::{RADIUS_PX, RADIUS_SM_PX, Theme, app_dir, theme};
 use crate::widgets::{empty_state, fade_in};
 
-const TRIGGER_MAX: usize = 48;
-const EXPANSION_MAX: usize = 160;
+pub(super) const TRIGGER_MAX: usize = 48;
+pub(super) const EXPANSION_MAX: usize = 160;
 const DIALOG_MS: u64 = 200;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -137,7 +138,6 @@ impl MainWindow {
     }
 
     fn shortcut_field(&self, t: Theme, focused: bool, cx: &mut Context<Self>) -> impl IntoElement {
-        let placeholder = self.shortcut_query.is_empty();
         div()
             .id("shortcut-query")
             .flex()
@@ -165,32 +165,7 @@ impl MainWindow {
                     .flex_none()
                     .text_color(if focused { t.text_secondary } else { t.text_muted }),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_w(px(0.))
-                    .items_center()
-                    .overflow_hidden()
-                    .text_size(px(13.))
-                    .line_height(px(18.))
-                    .when(!placeholder, |el| {
-                        el.child(
-                            div()
-                                .text_color(t.text)
-                                .when(self.shortcut_replace, |text| {
-                                    text.bg(t.surface_active).rounded(px(3.)).px(px(2.))
-                                })
-                                .child(SharedString::from(self.shortcut_query.clone())),
-                        )
-                    })
-                    .when(focused && !self.shortcut_replace, |el| {
-                        el.child(div().w(px(1.5)).h(px(14.)).flex_none().bg(t.text))
-                    })
-                    .when(placeholder, |el| {
-                        el.child(div().text_color(t.text_muted).child("Search shortcuts"))
-                    }),
-            )
+            .child(text_field::paint(&self.shortcut_query, focused, "Search shortcuts", t))
     }
 
     fn add_shortcut_button(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
@@ -312,68 +287,19 @@ impl MainWindow {
         if !self.shortcut_focus.is_focused(window) {
             return;
         }
-        let ks = &event.keystroke;
-        if ks.modifiers.control || ks.modifiers.platform {
-            match ks.key.as_str() {
-                "a" => self.shortcut_replace = !self.shortcut_query.is_empty(),
-                "v" => {
-                    if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-                        self.push_shortcut_text(&text);
-                    }
-                }
-                _ => return,
-            }
+        if text_field::apply_key(&mut self.shortcut_query, &event.keystroke, cx) {
             cx.stop_propagation();
             cx.notify();
             return;
         }
-        match ks.key.as_str() {
-            "backspace" => {
-                if self.shortcut_replace || ks.modifiers.alt {
-                    self.shortcut_query.clear();
-                } else {
-                    self.shortcut_query.pop();
-                }
-                self.shortcut_replace = false;
+        if event.keystroke.key == "escape" {
+            if self.shortcut_query.is_empty() {
+                window.blur();
+            } else {
+                self.shortcut_query.clear();
             }
-            "escape" => {
-                if self.shortcut_query.is_empty() {
-                    window.blur();
-                } else {
-                    self.shortcut_query.clear();
-                    self.shortcut_replace = false;
-                }
-            }
-            _ => {
-                let typed = ks.key_char.clone().or_else(|| (ks.key.as_str() == "space").then(|| " ".to_string()));
-                let Some(typed) = typed else { return };
-                if typed == "\n" || typed == "\t" || typed == "\r" {
-                    return;
-                }
-                self.push_shortcut_text(&typed);
-            }
-        }
-        cx.stop_propagation();
-        cx.notify();
-    }
-
-    fn push_shortcut_text(&mut self, extra: &str) {
-        if self.shortcut_replace {
-            self.shortcut_query.clear();
-            self.shortcut_replace = false;
-        }
-        let limit = TRIGGER_MAX;
-        for ch in extra.chars() {
-            if ch == '\n' || ch == '\r' || ch == '\t' {
-                if !self.shortcut_query.is_empty() && !self.shortcut_query.ends_with(' ') {
-                    self.shortcut_query.push(' ');
-                }
-                continue;
-            }
-            if self.shortcut_query.chars().count() >= limit {
-                break;
-            }
-            self.shortcut_query.push(ch);
+            cx.stop_propagation();
+            cx.notify();
         }
     }
 
@@ -384,7 +310,6 @@ impl MainWindow {
         }
         self.dialog_word.clear();
         self.dialog_shortcut.clear();
-        self.dialog_replace = false;
         self.dialog_closing = false;
         self.shortcut_dialog = true;
         self.dialog_nonce += 1;
@@ -417,8 +342,8 @@ impl MainWindow {
     }
 
     fn confirm_shortcut_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let word = self.dialog_word.clone();
-        let shortcut = self.dialog_shortcut.clone();
+        let word = self.dialog_word.as_str().to_owned();
+        let shortcut = self.dialog_shortcut.as_str().to_owned();
         if !upsert_shortcut(&mut self.shortcuts, &word, &shortcut) {
             if squash(&self.dialog_word, TRIGGER_MAX).is_none() {
                 window.focus(&self.word_focus);
@@ -517,7 +442,6 @@ impl MainWindow {
                 DialogField::Word,
                 "Word",
                 "my email shortcut",
-                &self.dialog_word,
             ))
             .child(self.dialog_field(
                 t,
@@ -527,7 +451,6 @@ impl MainWindow {
                 DialogField::Shortcut,
                 "Shortcut",
                 "you@example.com",
-                &self.dialog_shortcut,
             ))
             .child(
                 div()
@@ -549,14 +472,16 @@ impl MainWindow {
         field: DialogField,
         label: &'static str,
         placeholder: &'static str,
-        value: &str,
     ) -> impl IntoElement {
         let focus = match field {
             DialogField::Word => self.word_focus.clone(),
             DialogField::Shortcut => self.dialog_shortcut_focus.clone(),
         };
         let focused = focus.is_focused(window);
-        let empty = value.is_empty();
+        let value = match field {
+            DialogField::Word => &self.dialog_word,
+            DialogField::Shortcut => &self.dialog_shortcut,
+        };
         div()
             .flex()
             .flex_col()
@@ -584,7 +509,6 @@ impl MainWindow {
                     .track_focus(&focus)
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, window, cx| {
                         cx.stop_propagation();
-                        this.dialog_replace = false;
                         match field {
                             DialogField::Word => window.focus(&this.word_focus),
                             DialogField::Shortcut => window.focus(&this.dialog_shortcut_focus),
@@ -594,30 +518,7 @@ impl MainWindow {
                     .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                         this.on_dialog_key(field, event, window, cx);
                     }))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_1()
-                            .min_w(px(0.))
-                            .items_center()
-                            .overflow_hidden()
-                            .text_size(px(13.))
-                            .line_height(px(18.))
-                            .when(!empty, |el| {
-                                el.child(
-                                    div()
-                                        .text_color(t.text)
-                                        .when(focused && self.dialog_replace, |text| {
-                                            text.bg(t.surface_active).rounded(px(3.)).px(px(2.))
-                                        })
-                                        .child(SharedString::from(value.to_string())),
-                                )
-                            })
-                            .when(focused && !self.dialog_replace, |el| {
-                                el.child(div().w(px(1.5)).h(px(14.)).flex_none().bg(t.text))
-                            })
-                            .when(empty, |el| el.child(div().text_color(t.text_muted).child(placeholder))),
-                    ),
+                    .child(text_field::paint(value, focused, placeholder, t)),
             )
     }
 
@@ -678,40 +579,18 @@ impl MainWindow {
         if !focused {
             return;
         }
-        let ks = &event.keystroke;
-        if ks.modifiers.control || ks.modifiers.platform {
-            match ks.key.as_str() {
-                "a" => self.dialog_replace = !self.dialog_text(field).is_empty(),
-                "v" => {
-                    if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-                        self.push_dialog_text(field, &text);
-                    }
-                }
-                _ => return,
-            }
+        if text_field::apply_key(self.dialog_buf(field), &event.keystroke, cx) {
             cx.stop_propagation();
             cx.notify();
             return;
         }
-        match ks.key.as_str() {
-            "backspace" => {
-                if self.dialog_replace || ks.modifiers.alt {
-                    self.dialog_buf(field).clear();
-                } else {
-                    self.dialog_buf(field).pop();
-                }
-                self.dialog_replace = false;
-            }
+        match event.keystroke.key.as_str() {
             "enter" => match field {
-                DialogField::Word => {
-                    self.dialog_replace = false;
-                    window.focus(&self.dialog_shortcut_focus);
-                }
+                DialogField::Word => window.focus(&self.dialog_shortcut_focus),
                 DialogField::Shortcut => self.confirm_shortcut_dialog(window, cx),
             },
             "tab" => {
-                self.dialog_replace = false;
-                let next = if ks.modifiers.shift { DialogField::Word } else { DialogField::Shortcut };
+                let next = if event.keystroke.modifiers.shift { DialogField::Word } else { DialogField::Shortcut };
                 if next != field {
                     match next {
                         DialogField::Word => window.focus(&self.word_focus),
@@ -720,54 +599,16 @@ impl MainWindow {
                 }
             }
             "escape" => self.dismiss_shortcut_dialog(window, cx),
-            _ => {
-                let typed = ks.key_char.clone().or_else(|| (ks.key.as_str() == "space").then(|| " ".to_string()));
-                let Some(typed) = typed else { return };
-                if typed == "\n" || typed == "\t" || typed == "\r" {
-                    return;
-                }
-                self.push_dialog_text(field, &typed);
-            }
+            _ => return,
         }
         cx.stop_propagation();
         cx.notify();
     }
 
-    fn dialog_text(&self, field: DialogField) -> &str {
-        match field {
-            DialogField::Word => &self.dialog_word,
-            DialogField::Shortcut => &self.dialog_shortcut,
-        }
-    }
-
-    fn dialog_buf(&mut self, field: DialogField) -> &mut String {
+    fn dialog_buf(&mut self, field: DialogField) -> &mut Field {
         match field {
             DialogField::Word => &mut self.dialog_word,
             DialogField::Shortcut => &mut self.dialog_shortcut,
-        }
-    }
-
-    fn push_dialog_text(&mut self, field: DialogField, extra: &str) {
-        if self.dialog_replace {
-            self.dialog_buf(field).clear();
-            self.dialog_replace = false;
-        }
-        let limit = match field {
-            DialogField::Word => TRIGGER_MAX,
-            DialogField::Shortcut => EXPANSION_MAX,
-        };
-        let buf = self.dialog_buf(field);
-        for ch in extra.chars() {
-            if ch == '\n' || ch == '\r' || ch == '\t' {
-                if !buf.is_empty() && !buf.ends_with(' ') {
-                    buf.push(' ');
-                }
-                continue;
-            }
-            if buf.chars().count() >= limit {
-                break;
-            }
-            buf.push(ch);
         }
     }
 }
