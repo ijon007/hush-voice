@@ -245,33 +245,63 @@ impl MainWindow {
     }
 }
 
-/// One stat column: bare icon + label on top, big number (+ muted unit) below.
-/// Identical structure in every column so the baselines line up.
+/// One stat card: icon tile, big number (+ muted unit), label underneath.
+/// Identical structure in every card so the baselines line up.
 fn stat_cell(
     t: Theme,
     icon: &'static str,
     value: String,
     unit: Option<&'static str>,
     label: &'static str,
-    divider: bool,
 ) -> impl IntoElement {
-    div()
+    card(t)
         .flex_1()
         .min_w(px(0.))
-        .flex()
-        .flex_col()
-        .gap(px(10.))
-        .px(px(20.))
+        .gap(px(14.))
+        .px(px(18.))
         .pt(px(16.))
-        .pb(px(18.))
-        .when(divider, |el| el.border_l_1().border_color(t.border))
+        .pb(px(16.))
         .child(
             div()
                 .flex()
                 .items_center()
-                .gap(px(6.))
-                .h(px(16.))
-                .child(svg().path(icon).size(px(14.)).flex_none().text_color(t.text_muted))
+                .justify_center()
+                .size(px(30.))
+                .rounded(px(crate::theme::RADIUS_SM_PX))
+                .bg(t.surface_selected)
+                .border_1()
+                .border_color(t.border)
+                .child(svg().path(icon).size(px(15.)).text_color(t.text_secondary)),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(2.))
+                .child(
+                    div()
+                        .flex()
+                        .items_baseline()
+                        .gap(px(4.))
+                        .h(px(34.))
+                        .child(
+                            div()
+                                .text_size(px(28.))
+                                .line_height(px(34.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(t.text)
+                                .child(value),
+                        )
+                        .when_some(unit, |el, unit| {
+                            el.child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(t.text_muted)
+                                    .child(unit),
+                            )
+                        }),
+                )
                 .child(
                     div()
                         .text_size(px(12.))
@@ -280,29 +310,6 @@ fn stat_cell(
                         .truncate()
                         .child(label),
                 ),
-        )
-        .child(
-            div()
-                .flex()
-                .items_baseline()
-                .gap(px(4.))
-                .h(px(34.))
-                .child(
-                    div()
-                        .text_size(px(30.))
-                        .line_height(px(34.))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(t.text)
-                        .child(value),
-                )
-                .when_some(unit, |el, unit| {
-                    el.child(
-                        div()
-                            .text_size(px(14.))
-                            .text_color(t.text_muted)
-                            .child(unit),
-                    )
-                }),
         )
 }
 
@@ -322,17 +329,17 @@ impl MainWindow {
     fn render_stats(&self, t: Theme) -> impl IntoElement {
         let stats = compute_stats(&self.history);
         let streak_unit = if stats.streak_days == 1 { "day" } else { "days" };
-        let grouped = card(t)
-            .flex_row()
-            .child(stat_cell(t, "icons/bolt.svg", stats.wpm.to_string(), Some("wpm"), "Average speed", false))
-            .child(stat_cell(t, "icons/text.svg", group_thousands(stats.total_words), None, "Words dictated", true))
+        let grouped = div()
+            .flex()
+            .gap(px(12.))
+            .child(stat_cell(t, "icons/bolt.svg", stats.wpm.to_string(), Some("wpm"), "Average speed"))
+            .child(stat_cell(t, "icons/text.svg", group_thousands(stats.total_words), None, "Words dictated"))
             .child(stat_cell(
                 t,
                 "icons/flame.svg",
                 stats.streak_days.to_string(),
                 Some(streak_unit),
                 "Current streak",
-                true,
             ));
         let wrap = div().pb(px(28.));
         // First show only: the stats card rises in once.
