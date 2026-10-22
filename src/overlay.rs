@@ -371,27 +371,81 @@ impl Render for RecordingPill {
     }
 }
 
-fn overlay_bounds(cx: &App) -> Bounds<gpui::Pixels> {
-    let pill = size(px(OVERLAY_WIDTH), px(OVERLAY_HEIGHT));
-    if let Some(display) = cx.primary_display() {
-        let screen = display.bounds();
-        // Snap to a 4px grid: whole device pixels at 100/125/150/175/200%.
-        let grid = |v: Pixels| px(((v / px(1.)) / 4.).round() * 4.);
-        Bounds {
-            origin: point(
-                grid(screen.origin.x + (screen.size.width - pill.width) / 2.),
-                grid(match prefs(cx).overlay_position {
-                    OverlayPosition::Bottom => {
-                        screen.origin.y + screen.size.height - pill.height - px(OVERLAY_BOTTOM_MARGIN)
-                    }
-                    OverlayPosition::Top => screen.origin.y + px(OVERLAY_TOP_MARGIN),
-                }),
-            ),
-            size: pill,
+fn overlay_display(cx: &App) -> Option<std::rc::Rc<dyn gpui::PlatformDisplay>> {
+    let displays = cx.displays();
+    #[cfg(windows)]
+    if let Some(i) = windows_active_monitor_index() {
+        if let Some(d) = displays.get(i) {
+            return Some(d.clone());
         }
-    } else {
-        Bounds::centered(None, pill, cx)
     }
+    cx.primary_display()
+}
+
+fn overlay_bounds_for(screen: Bounds<gpui::Pixels>, pos: OverlayPosition) -> Bounds<gpui::Pixels> {
+    let pill = size(px(OVERLAY_WIDTH), px(OVERLAY_HEIGHT));
+    // Snap to a 4px grid: whole device pixels at 100/125/150/175/200%.
+    let grid = |v: Pixels| px(((v / px(1.)) / 4.).round() * 4.);
+    Bounds {
+        origin: point(
+            grid(screen.origin.x + (screen.size.width - pill.width) / 2.),
+            grid(match pos {
+                OverlayPosition::Bottom => {
+                    screen.origin.y + screen.size.height - pill.height - px(OVERLAY_BOTTOM_MARGIN)
+                }
+                OverlayPosition::Top => screen.origin.y + px(OVERLAY_TOP_MARGIN),
+            }),
+        ),
+        size: pill,
+    }
+}
+
+/// Index in `EnumDisplayMonitors` order, same as GPUI's `DisplayId`.
+#[cfg(windows)]
+fn windows_active_monitor_index() -> Option<usize> {
+    use windows::Win32::Foundation::{LPARAM, POINT};
+    use windows::Win32::Graphics::Gdi::{
+        EnumDisplayMonitors, HMONITOR, MONITOR_DEFAULTTONEAREST, MonitorFromPoint, MonitorFromWindow,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetForegroundWindow};
+
+    unsafe {
+        let fg = GetForegroundWindow();
+        let mut monitor = if fg.is_invalid() {
+            HMONITOR::default()
+        } else {
+            MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST)
+        };
+        if monitor.is_invalid() {
+            let mut pt = POINT::default();
+            GetCursorPos(&mut pt).ok()?;
+            monitor = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        }
+        if monitor.is_invalid() {
+            return None;
+        }
+
+        let mut monitors: Vec<HMONITOR> = Vec::new();
+        let _ = EnumDisplayMonitors(
+            None,
+            None,
+            Some(collect_monitors),
+            LPARAM(&mut monitors as *mut _ as isize),
+        );
+        monitors.iter().position(|h| *h == monitor)
+    }
+}
+
+#[cfg(windows)]
+unsafe extern "system" fn collect_monitors(
+    hmonitor: windows::Win32::Graphics::Gdi::HMONITOR,
+    _hdc: windows::Win32::Graphics::Gdi::HDC,
+    _place: *mut windows::Win32::Foundation::RECT,
+    data: windows::Win32::Foundation::LPARAM,
+) -> windows::core::BOOL {
+    let monitors = data.0 as *mut Vec<windows::Win32::Graphics::Gdi::HMONITOR>;
+    unsafe { (*monitors).push(hmonitor) };
+    windows::core::BOOL(1)
 }
 
 /// Hold-to-dictate: show the pill (no-op if already up).
@@ -404,7 +458,13 @@ fn open_overlay(cx: &mut App, locked: bool) {
         return;
     }
 
-    let bounds = overlay_bounds(cx);
+    let display = overlay_display(cx);
+    let bounds = display
+        .as_ref()
+        .map(|d| overlay_bounds_for(d.bounds(), prefs(cx).overlay_position))
+        .unwrap_or_else(|| {
+            Bounds::centered(None, size(px(OVERLAY_WIDTH), px(OVERLAY_HEIGHT)), cx)
+        });
     let mic = prefs(cx).mic.clone();
     let cues = prefs(cx).sound_cues;
     let model = engine::resolve(&prefs(cx).model, prefs(cx).custom_model.as_deref());
@@ -417,6 +477,7 @@ fn open_overlay(cx: &mut App, locked: bool) {
         .open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                display_id: display.map(|d| d.id()),
                 titlebar: None,
                 window_background: WindowBackgroundAppearance::Opaque,
                 kind: WindowKind::PopUp,
@@ -700,7 +761,9 @@ fn overlay_hwnd(window: &Window) -> Option<windows::Win32::Foundation::HWND> {
 
 #[cfg(test)]
 mod tests {
-    use super::LevelMeter;
+    use super::{OVERLAY_HEIGHT, OVERLAY_WIDTH, LevelMeter, overlay_bounds_for};
+    use crate::prefs::OverlayPosition;
+    use gpui::{Bounds, point, px, size};
 
     /// Room tone around -55 dB with +-3 dB jitter, then speech around -30 dB.
     #[test]
@@ -735,5 +798,21 @@ mod tests {
             last = m.update(-40., dt);
         }
         assert_eq!(last, 0., "steady fan noise must be absorbed into the floor");
+    }
+
+    #[test]
+    fn pill_follows_the_given_monitor() {
+        let second = Bounds {
+            origin: point(px(1920.), px(0.)),
+            size: size(px(1920.), px(1080.)),
+        };
+        let bounds = overlay_bounds_for(second, OverlayPosition::Bottom);
+        assert_eq!(bounds.size, size(px(OVERLAY_WIDTH), px(OVERLAY_HEIGHT)));
+        assert!(
+            bounds.origin.x >= px(1920.),
+            "pill must sit on the second monitor, got x={}",
+            f32::from(bounds.origin.x)
+        );
+        assert!(bounds.origin.x < px(1920. + 1920. - OVERLAY_WIDTH));
     }
 }
