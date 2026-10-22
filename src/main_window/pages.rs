@@ -34,8 +34,11 @@ pub(super) fn page() -> gpui::Div {
 impl MainWindow {
     pub(super) fn render_home(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = theme(cx);
+        let p = crate::prefs::prefs(cx).clone();
+        let ready = crate::engine::resolve(&p.model, p.custom_model.as_deref()).is_some();
         page()
             .child(page_header(t, "Welcome back!", "Hold Ctrl + Space to dictate"))
+            .when(!ready, |el| el.child(self.render_setup(t, cx)))
             .child(self.render_stats(t))
             .child(
                 div()
@@ -57,10 +60,61 @@ impl MainWindow {
 }
 
 impl MainWindow {
+    /// First run: no speech model on disk yet.
+    fn render_setup(&self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
+        div().pb(px(20.)).child(
+            card(t)
+                .flex_row()
+                .items_center()
+                .gap(px(24.))
+                .px(px(20.))
+                .py(px(18.))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .gap(px(4.))
+                        .child(
+                            div()
+                                .text_size(px(15.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(t.text)
+                                .child("Download a model to start"),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .text_color(t.text_muted)
+                                .child("Hush turns speech into text right on this PC. Balanced is a good first pick."),
+                        ),
+                )
+                .child(
+                    div()
+                        .id("open-models")
+                        .flex_none()
+                        .px(px(14.))
+                        .h(px(34.))
+                        .flex()
+                        .items_center()
+                        .rounded(px(crate::theme::RADIUS_SM_PX))
+                        .bg(t.primary)
+                        .text_color(t.primary_text)
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .hover(move |s| s.bg(t.primary_active))
+                        .active(|s| s.opacity(0.88))
+                        .cursor_pointer()
+                        .child("Choose a model")
+                        .on_click(cx.listener(|this, _, _, cx| this.open_model_settings(cx))),
+                ),
+        )
+    }
+
     /// Grouped transcript list: one surface, hairline dividers, copy on hover.
     fn render_history(&self, t: Theme, cx: &mut Context<Self>) -> gpui::AnyElement {
         if self.history.is_empty() {
-            return empty_state(t, "No transcripts yet", "Hold Ctrl + Space to capture the first one")
+            return empty_state(t, "No dictations yet", "Hold Ctrl + Space, speak, and let go")
                 .into_any_element();
         }
         let last = self.history.len() - 1;

@@ -13,13 +13,6 @@ pub(crate) enum Page {
 }
 
 #[derive(Clone)]
-pub(crate) struct ModelOption {
-    pub id: &'static str,
-    pub name: SharedString,
-    pub detail: SharedString,
-}
-
-#[derive(Clone)]
 pub(crate) struct TranscriptRow {
     pub text: SharedString,
     pub model: SharedString,
@@ -31,11 +24,6 @@ pub(crate) struct TranscriptRow {
 }
 
 impl TranscriptRow {
-    /// A new dictation captured now (stamped with today's date).
-    pub(crate) fn new(text: impl Into<SharedString>, model: impl Into<SharedString>, seconds: f32) -> Self {
-        Self::on_day(text, model, seconds, Some(today()))
-    }
-
     fn on_day(
         text: impl Into<SharedString>,
         model: impl Into<SharedString>,
@@ -43,6 +31,10 @@ impl TranscriptRow {
         day: Option<i64>,
     ) -> Self {
         Self { text: text.into(), model: model.into(), seconds, day }
+    }
+
+    pub(crate) fn from_entry(text: &str, model: &str, seconds: f32, day: i64) -> Self {
+        Self::on_day(text.to_string(), model.to_string(), seconds, Some(day))
     }
 
     pub(crate) fn duration_label(&self) -> SharedString {
@@ -213,26 +205,6 @@ pub(crate) fn apply_style(text: &str, style: crate::prefs::Style) -> String {
         Style::Casual => out.strip_suffix('.').map(str::to_string).unwrap_or(out),
         _ => out,
     }
-}
-
-pub(crate) fn sample_history() -> Vec<TranscriptRow> {
-    let d = today();
-    let mut rows = vec![
-        TranscriptRow::new("Schedule a design review for Thursday afternoon.", "Whisper Local", 2.4),
-        TranscriptRow::new("Remind me to send the hush-voice build notes.", "Cloud STT", 1.8),
-    ];
-    let older: [(&str, &str, f32, Option<i64>); 8] = [
-        ("Draft a calm reply declining the meeting.", "Whisper Local", 3.1, Some(d - 1)),
-        ("Open the settings panel and pick a model.", "Whisper Large", 2.0, Some(d - 1)),
-        ("Capture action items from the standup recording.", "Whisper Local", 4.2, Some(d - 2)),
-        ("Rewrite the onboarding copy to feel quieter.", "Cloud STT", 2.7, Some(d - 3)),
-        ("Pin the overlay near the cursor on the next pass.", "Whisper Local", 3.4, Some(d - 5)),
-        ("Check whether SendInput needs a focus fallback.", "Whisper Large", 2.1, Some(d - 6)),
-        ("Ship a tray icon before wiring the SQLite history store.", "Cloud STT", 3.9, None),
-        ("Keep the recording pill critically damped \u{2014} no bounce.", "Whisper Local", 2.6, None),
-    ];
-    rows.extend(older.into_iter().map(|(t, m, s, day)| TranscriptRow::on_day(t, m, s, day)));
-    rows
 }
 
 #[cfg(test)]
