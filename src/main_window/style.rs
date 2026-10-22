@@ -70,7 +70,7 @@ impl MainWindow {
             .relative()
             .min_w(px(0.))
             // Fixed height: GPUI grid rows don't size to content.
-            .h(px(268.))
+            .h(px(192.))
             .flex()
             .flex_col()
             .p(px(6.))
@@ -84,7 +84,7 @@ impl MainWindow {
             .child(
                 // Inset preview: the spoken line as it lands on the page.
                 div()
-                    .h(px(148.))
+                    .h(px(92.))
                     .flex_none()
                     .p(px(14.))
                     .rounded(px(RADIUS_PX - 6.))
