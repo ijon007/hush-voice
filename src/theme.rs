@@ -43,6 +43,8 @@ pub struct Theme {
     pub nav_selected: Rgba,
     /// Segmented control track / inset chrome.
     pub track: Rgba,
+    /// Text input fill: a touch lighter than dialogs/cards (never darker).
+    pub input_bg: Rgba,
     /// Hairline borders.
     pub border: Rgba,
     /// Stronger edge for keycaps / unselected controls.
@@ -74,6 +76,7 @@ impl Theme {
         nav_hover: hex(0xf2eee8),
         nav_selected: hex(0xdfd9d0),
         track: hex(0xefeae3),
+        input_bg: hex(0xffffff),
         border: hex(0xe7e1d8),
         border_strong: hex(0xd6cec3),
         text: hex(INK),
@@ -96,6 +99,7 @@ impl Theme {
         nav_hover: hex(0x1b1916),
         nav_selected: hex(0x262320),
         track: hex(0x1a1815),
+        input_bg: hex(0x2e2b27),
         border: hex(0x312e2a),
         border_strong: hex(0x3d3934),
         text: hex(0xf2eee8),
