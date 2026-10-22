@@ -24,7 +24,7 @@ enum DialogField {
     Shortcut,
 }
 
-pub(super) fn load_shortcuts() -> Vec<Shortcut> {
+pub(crate) fn load_shortcuts() -> Vec<Shortcut> {
     let Some(path) = app_dir().map(|dir| dir.join("shortcuts")) else {
         return Vec::new();
     };

@@ -16,7 +16,7 @@ use crate::widgets::{empty_state, fade_in};
 const MAX_LEN: usize = 48;
 const DIALOG_MS: u64 = 200;
 
-pub(super) fn load_words() -> Vec<String> {
+pub(crate) fn load_words() -> Vec<String> {
     let Some(path) = app_dir().map(|dir| dir.join("dictionary")) else {
         return Vec::new();
     };

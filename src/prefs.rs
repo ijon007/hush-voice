@@ -19,6 +19,23 @@ pub(crate) enum Style {
     Verbatim,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KeepHistory {
+    Forever,
+    Days30,
+    Days7,
+}
+
+impl KeepHistory {
+    pub(crate) fn days(self) -> Option<i64> {
+        match self {
+            KeepHistory::Forever => None,
+            KeepHistory::Days30 => Some(30),
+            KeepHistory::Days7 => Some(7),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct Prefs {
     /// Short chime when the pill opens and closes.
@@ -29,6 +46,13 @@ pub(crate) struct Prefs {
     /// Selected model id.
     pub model: String,
     pub style: Style,
+    /// Path of a user-picked .bin model (model id "custom").
+    pub custom_model: Option<String>,
+    /// "auto" or an ISO code; ignored by English-only models.
+    pub language: String,
+    /// Paste into the focused app; off = copy to the clipboard only.
+    pub paste: bool,
+    pub keep_history: KeepHistory,
 }
 
 impl Default for Prefs {
@@ -37,8 +61,13 @@ impl Default for Prefs {
             sound_cues: true,
             overlay_position: OverlayPosition::Bottom,
             mic: None,
-            model: "whisper-local".into(),
+            model: "balanced".into(),
             style: Style::Formal,
+            custom_model: None,
+            // Auto-detect costs an extra encoder pass (2-4x slower on CPU).
+            language: "en".into(),
+            paste: true,
+            keep_history: KeepHistory::Forever,
         }
     }
 }
@@ -78,6 +107,16 @@ fn load() -> Prefs {
             }
             "mic" => p.mic = (!value.is_empty()).then(|| value.to_string()),
             "model" if !value.is_empty() => p.model = value.to_string(),
+            "custom_model" => p.custom_model = (!value.is_empty()).then(|| value.to_string()),
+            "language" if !value.is_empty() => p.language = value.to_string(),
+            "paste" => p.paste = value != "false",
+            "keep_history" => {
+                p.keep_history = match value {
+                    "30" => KeepHistory::Days30,
+                    "7" => KeepHistory::Days7,
+                    _ => KeepHistory::Forever,
+                }
+            }
             "style" => {
                 p.style = match value {
                     "casual" => Style::Casual,
@@ -88,7 +127,15 @@ fn load() -> Prefs {
             _ => {}
         }
     }
+    if !matches!(p.model.as_str(), "fast" | "balanced" | "best" | "custom") {
+        p.model = "balanced".into();
+    }
     p
+}
+
+/// Read-only load for headless tools (no GPUI app).
+pub(crate) fn load_standalone() -> Prefs {
+    load()
 }
 
 fn save(p: &Prefs) {
@@ -97,7 +144,7 @@ fn save(p: &Prefs) {
         let _ = std::fs::create_dir_all(dir);
     }
     let body = format!(
-        "sound_cues={}\noverlay_position={}\nmic={}\nmodel={}\nstyle={}\n",
+        "sound_cues={}\noverlay_position={}\nmic={}\nmodel={}\nstyle={}\ncustom_model={}\nlanguage={}\npaste={}\nkeep_history={}\n",
         p.sound_cues,
         match p.overlay_position {
             OverlayPosition::Bottom => "bottom",
@@ -109,6 +156,14 @@ fn save(p: &Prefs) {
             Style::Formal => "formal",
             Style::Casual => "casual",
             Style::Verbatim => "verbatim",
+        },
+        p.custom_model.as_deref().unwrap_or(""),
+        p.language,
+        p.paste,
+        match p.keep_history {
+            KeepHistory::Forever => "forever",
+            KeepHistory::Days30 => "30",
+            KeepHistory::Days7 => "7",
         },
     );
     let _ = std::fs::write(path, body);
