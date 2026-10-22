@@ -37,6 +37,7 @@ pub(crate) fn register_hotkey(cx: &mut App) {
     cx.set_global(OverlayState {
         handle: None,
         locked: false,
+        target: 0,
     });
     reload(cx);
 

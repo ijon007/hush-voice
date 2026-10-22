@@ -30,6 +30,8 @@ pub(crate) struct OverlayState {
     pub handle: Option<WindowHandle<RecordingPill>>,
     /// Locked via the toggle shortcut: releasing the hold shortcut won't dismiss it.
     pub locked: bool,
+    /// Foreground window when recording started (paste target, 0 = unknown).
+    pub target: isize,
 }
 
 impl Global for OverlayState {}
@@ -457,6 +459,8 @@ fn open_overlay(cx: &mut App, locked: bool) {
     if cx.global::<OverlayState>().handle.is_some() {
         return;
     }
+    // Remember where the text should go before any Hush window appears.
+    cx.global_mut::<OverlayState>().target = paste::foreground();
 
     let display = overlay_display(cx);
     let bounds = display
@@ -555,6 +559,7 @@ pub(crate) fn toggle_lock(cx: &mut App) {
 fn force_hide_overlay(cx: &mut App) {
     cx.global_mut::<OverlayState>().locked = false;
     let Some(handle) = cx.global_mut::<OverlayState>().handle.take() else { return };
+    let target = cx.global::<OverlayState>().target;
     // Release the mic and grab what was said.
     let captured = handle
         .update(cx, |pill, _, _| pill.meter.take().map(|m| m.take_samples()))
@@ -593,7 +598,7 @@ fn force_hide_overlay(cx: &mut App) {
             close_pill(cx, handle);
             match result {
                 Ok(Some(out)) => {
-                    paste::deliver(cx, &out.text, p.paste);
+                    paste::deliver(cx, &out.text, p.paste, target);
                     history::add(cx, &out.text, out.seconds, &label);
                 }
                 Ok(None) => {}
