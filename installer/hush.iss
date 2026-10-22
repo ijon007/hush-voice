@@ -15,17 +15,8 @@
 
 ; Version comes from the [package] version line in Cargo.toml.
 #ifndef AppVersion
-  #define FH FileOpen(AddBackslash(SourcePath) + "..\Cargo.toml")
-  #define Line ""
-  #define AppVersion ""
-  #sub ReadVersionLine
-    #define Line FileRead(FH)
-    #if AppVersion == "" && Pos('version = "', Line) == 1
-      #define AppVersion Copy(Line, 12, Len(Line) - 12)
-    #endif
-  #endsub
-  #for {0; AppVersion == "" && !FileEof(FH); 0} ReadVersionLine
-  #expr FileClose(FH)
+  ; Cargo.toml reads as INI: [package] version = "x.y.z".
+  #define AppVersion StringChange(Trim(ReadIni(AddBackslash(SourcePath) + "..\Cargo.toml", "package", "version", "")), '"', '')
 #endif
 #if AppVersion == ""
   #error Could not read the version from Cargo.toml
