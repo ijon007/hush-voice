@@ -38,6 +38,8 @@ impl Global for OverlayState {}
 
 pub(crate) struct RecordingPill {
     shaped: bool,
+    /// Linux without a compositor: last capsule we clipped the window to.
+    shape: Option<(i32, i32, i32, i32)>,
     /// Shows the lock glyph (toggle-shortcut mode).
     locked: bool,
     /// Live mic level; `None` if no mic / permission denied (flat bars).
@@ -126,6 +128,7 @@ impl RecordingPill {
         let now = Instant::now();
         Self {
             shaped: false,
+            shape: None,
             locked,
             meter: if no_model { None } else { MicMeter::start(mic.as_deref()) },
             bars: [0.; BAR_COUNT],
@@ -325,6 +328,26 @@ impl Render for RecordingPill {
         let left = snap((OVERLAY_WIDTH - pill_w) / 2., scale);
         let top = snap((OVERLAY_HEIGHT - pill_h) / 2. + dy, scale);
 
+        // No compositor: transparency shows as a box, so clip the X window
+        // itself to the capsule (resting position, device pixels).
+        #[cfg(target_os = "linux")]
+        if self.shaped {
+            let rest_top = snap((OVERLAY_HEIGHT - pill_h) / 2., scale);
+            let key = (
+                (left * scale).round() as i32,
+                (rest_top * scale).round() as i32,
+                (pill_w * scale).round() as i32,
+                (pill_h * scale).round() as i32,
+            );
+            if self.shape != Some(key) {
+                let b = window.bounds();
+                let (ww, wh) = (f32::from(b.size.width) as i32, f32::from(b.size.height) as i32);
+                if crate::platform::linux::shape_overlay(ww, wh, key) {
+                    self.shape = Some(key);
+                }
+            }
+        }
+
         // Outer transparent canvas; inner material floats with a soft shadow.
         div().size_full().relative().child(
             div()
@@ -372,6 +395,9 @@ impl Render for RecordingPill {
         )
     }
 }
+
+#[cfg(target_os = "linux")]
+static LINUX_TARGET: std::sync::Mutex<Option<(i32, i32)>> = std::sync::Mutex::new(None);
 
 fn overlay_display(cx: &App) -> Option<std::rc::Rc<dyn gpui::PlatformDisplay>> {
     let displays = cx.displays();
@@ -479,6 +505,11 @@ fn open_overlay(cx: &mut App, locked: bool) {
         .unwrap_or_else(|| {
             Bounds::centered(None, size(px(OVERLAY_WIDTH), px(OVERLAY_HEIGHT)), cx)
         });
+    #[cfg(target_os = "linux")]
+    if let Ok(mut t) = LINUX_TARGET.lock() {
+        // The WM may place the window elsewhere; remember where it belongs.
+        *t = Some((f32::from(bounds.origin.x) as i32, f32::from(bounds.origin.y) as i32));
+    }
     let mic = prefs(cx).mic.clone();
     let cues = prefs(cx).sound_cues;
     let model = engine::resolve(&prefs(cx).model, prefs(cx).custom_model.as_deref());
@@ -539,6 +570,7 @@ fn open_overlay(cx: &mut App, locked: bool) {
         .detach();
     }
 
+    crate::crashlog::debug(&format!("pill: shown (opened={}, model={})", handle.is_some(), !no_model));
     let state = cx.global_mut::<OverlayState>();
     state.handle = handle;
     state.locked = locked;
@@ -585,9 +617,17 @@ fn force_hide_overlay(cx: &mut App) {
     let p = prefs(cx).clone();
     let model = engine::resolve(&p.model, p.custom_model.as_deref());
     let (Some((samples, rate)), Some(model)) = (captured, model) else {
+        crate::crashlog::debug("pill: closed (no audio or no model)");
         close_pill(cx, handle);
         return;
     };
+    // A tap shorter than ~0.3 s has no speech; don't spin up Whisper for it.
+    if cfg!(target_os = "linux") && (samples.len() as u64) * 10 < rate as u64 * 3 {
+        crate::crashlog::debug(&format!("pill: closed (too short: {} samples)", samples.len()));
+        close_pill(cx, handle);
+        return;
+    }
+    crate::crashlog::debug(&format!("transcribe: start {} samples @ {rate} Hz", samples.len()));
     if p.sound_cues {
         play(Cue::Stop);
     }
@@ -611,6 +651,11 @@ fn force_hide_overlay(cx: &mut App) {
             .background_executor()
             .spawn(async move { pipeline::run(&model, &samples, rate, &settings) })
             .await;
+        crate::crashlog::debug(match &result {
+            Ok(Some(_)) => "transcribe: done",
+            Ok(None) => "transcribe: empty",
+            Err(_) => "transcribe: failed",
+        });
         let _ = cx.update(|cx| {
             close_pill(cx, handle);
             match result {
@@ -719,9 +764,14 @@ fn clip_overlay_to_capsule(_window: &Window) -> bool {
     #[cfg(target_os = "linux")]
     {
         let b = _window.bounds();
+        let (x, y) = LINUX_TARGET
+            .lock()
+            .ok()
+            .and_then(|t| *t)
+            .unwrap_or((f32::from(b.origin.x) as i32, f32::from(b.origin.y) as i32));
         crate::platform::linux::place_overlay(
-            f32::from(b.origin.x) as i32,
-            f32::from(b.origin.y) as i32,
+            x,
+            y,
             f32::from(b.size.width) as i32,
             f32::from(b.size.height) as i32,
         )

@@ -7,6 +7,28 @@ pub(crate) fn logs_dir() -> Option<PathBuf> {
     Some(crate::theme::app_dir()?.join("logs"))
 }
 
+/// Linux: append a timestamped line to logs/hush.log (key events, so a
+/// freeze can be diagnosed afterwards). No-op elsewhere.
+pub(crate) fn debug(msg: &str) {
+    #[cfg(target_os = "linux")]
+    {
+        use std::io::Write;
+        let Some(dir) = logs_dir() else { return };
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("hush.log");
+        // Keep it small: start over past 1 MB.
+        if std::fs::metadata(&path).map(|m| m.len() > 1 << 20).unwrap_or(false) {
+            let _ = std::fs::remove_file(&path);
+        }
+        let ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+            let _ = writeln!(f, "{ms} {msg}");
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = msg;
+}
+
 /// Install the panic hook. Keeps the default hook (stderr) as well.
 pub(crate) fn install() {
     let default = std::panic::take_hook();

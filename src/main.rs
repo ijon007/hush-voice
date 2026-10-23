@@ -30,6 +30,12 @@ use overlay::{PERSIST_OVERLAY, show_overlay};
 
 fn main() {
     crashlog::install();
+    #[cfg(target_os = "linux")]
+    {
+        // Several threads (ours, GTK tray, global-hotkey) talk Xlib.
+        unsafe { x11::xlib::XInitThreads() };
+        crashlog::debug(&format!("start v{} cpus={:?}", env!("CARGO_PKG_VERSION"), std::thread::available_parallelism().ok()));
+    }
     // Debug tools (no window):
     //   hush-voice --transcribe <file.wav> [model-id-or-path] [language]
     //   hush-voice --download <fast|balanced|best>
