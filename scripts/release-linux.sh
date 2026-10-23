@@ -21,8 +21,15 @@ sed -i "0,/^version = \".*\"/s//version = \"$VER\"/" "$ROOT/Cargo.toml"
 # .cargo/config.toml pins MSVC-style *_FLAGS_RELEASE for Windows; real env vars win over it.
 export CMAKE_C_FLAGS="-O3 -DNDEBUG" CMAKE_CXX_FLAGS="-O3 -DNDEBUG"
 export CMAKE_C_FLAGS_RELEASE="-O3 -DNDEBUG" CMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG"
+# Portable CPU baseline: whisper-rs-sys forwards GGML_* env vars to cmake. Without this,
+# ggml uses -march=native (build box has AMX/AVX-512) -> "Illegal instruction" on other PCs.
+GGML_ENV="GGML_NATIVE=OFF GGML_AVX=ON GGML_AVX2=ON GGML_FMA=ON GGML_F16C=ON GGML_BMI2=ON \
+GGML_AVX_VNNI=OFF GGML_AVX512=OFF GGML_AVX512_VBMI=OFF GGML_AVX512_VNNI=OFF GGML_AVX512_BF16=OFF \
+GGML_AMX_TILE=OFF GGML_AMX_INT8=OFF GGML_AMX_BF16=OFF"
+export $GGML_ENV
 host_glibc="$(ldd --version | awk 'NR==1' | grep -oE '[0-9]+\.[0-9]+$')"
 if [ "$(printf '%s\n%s\n' "$host_glibc" "$MAX_GLIBC" | sort -V | awk "END{print}")" = "$MAX_GLIBC" ]; then
+  cargo clean --release -p whisper-rs-sys --manifest-path "$ROOT/Cargo.toml" --target-dir "$ROOT/target"
   cargo build --release --manifest-path "$ROOT/Cargo.toml" --target-dir "$ROOT/target"
   BIN="$ROOT/target/release/hush-voice"
 else
@@ -32,8 +39,9 @@ else
   mountpoint -q "$NOBLE_ROOT/proc" || sudo mount --bind /proc "$NOBLE_ROOT/proc"
   mountpoint -q "$NOBLE_ROOT/dev" || sudo mount --bind /dev "$NOBLE_ROOT/dev"
   sudo chroot "$NOBLE_ROOT" bash -c ". /root/.cargo/env && cd /src && \
-    CMAKE_C_FLAGS='$CMAKE_C_FLAGS' CMAKE_CXX_FLAGS='$CMAKE_CXX_FLAGS' \
-    CMAKE_C_FLAGS_RELEASE='$CMAKE_C_FLAGS' CMAKE_CXX_FLAGS_RELEASE='$CMAKE_CXX_FLAGS' \
+    export CMAKE_C_FLAGS='$CMAKE_C_FLAGS' CMAKE_CXX_FLAGS='$CMAKE_CXX_FLAGS' \
+    CMAKE_C_FLAGS_RELEASE='$CMAKE_C_FLAGS' CMAKE_CXX_FLAGS_RELEASE='$CMAKE_CXX_FLAGS' $GGML_ENV && \
+    cargo clean --release -p whisper-rs-sys --target-dir /src/target-noble && \
     cargo build --release --target-dir /src/target-noble"
   BIN="$ROOT/target-noble/release/hush-voice"
 fi
