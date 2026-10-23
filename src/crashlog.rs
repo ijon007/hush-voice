@@ -35,6 +35,9 @@ fn write_report(info: &std::panic::PanicHookInfo<'_>) -> Option<()> {
 pub(crate) fn open_folder() {
     if let Some(dir) = logs_dir() {
         let _ = std::fs::create_dir_all(&dir);
+        #[cfg(windows)]
         let _ = std::process::Command::new("explorer").arg(dir).spawn();
+        #[cfg(target_os = "linux")]
+        crate::platform::linux::open(&dir);
     }
 }

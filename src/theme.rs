@@ -141,9 +141,19 @@ pub fn set_theme_mode(mode: ThemeMode, cx: &mut App) {
     cx.refresh_windows();
 }
 
+#[cfg(windows)]
 pub(crate) fn app_dir() -> Option<std::path::PathBuf> {
     let base = std::env::var_os("APPDATA")?;
     Some(std::path::PathBuf::from(base).join("hush-voice"))
+}
+
+/// Linux: `$XDG_DATA_HOME/hush-voice` (~/.local/share/hush-voice).
+#[cfg(not(windows))]
+pub(crate) fn app_dir() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "linux")]
+    return Some(dirs::data_dir()?.join("hush-voice"));
+    #[cfg(not(target_os = "linux"))]
+    None
 }
 
 fn settings_path() -> Option<std::path::PathBuf> {

@@ -124,7 +124,9 @@ pub(crate) fn install(cx: &mut App) {
     if u.downloading {
         return;
     }
-    let Some(asset) = release.installer.clone() else {
+    // Linux: no self-installer yet; the release page has the packages.
+    let installer = if cfg!(windows) { release.installer.clone() } else { None };
+    let Some(asset) = installer else {
         cx.open_url(&release.url);
         return;
     };

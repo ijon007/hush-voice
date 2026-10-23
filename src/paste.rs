@@ -42,6 +42,7 @@ pub(crate) fn with_lead_space(text: &str) -> String {
 pub(crate) enum Outcome {
     Pasted,
     /// Input was sent but may not have landed (e.g. elevated target).
+    #[cfg_attr(not(windows), allow(dead_code))]
     Doubtful(String),
     Failed(String),
 }
@@ -97,6 +98,10 @@ pub(crate) fn deliver(cx: &mut App, text: &str, paste: bool, target: isize) {
     let text = with_lead_space(text);
     let saved = cx.read_from_clipboard();
     let chars = text.chars().count();
+    // Linux: X11 clipboard is served by a live owner, so GPUI (our process)
+    // owns it; Windows sets it inside imp::paste via Win32.
+    #[cfg(not(windows))]
+    cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
     let ours = text.clone();
     let work = cx.background_executor().spawn(async move { imp::paste(&ours, target) });
     cx.spawn(async move |cx| {
@@ -322,7 +327,59 @@ mod imp {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+mod imp {
+    use super::{MODIFIER_WAIT_MS, Outcome};
+    use crate::platform::linux as x;
+    use std::time::{Duration, Instant};
+
+    pub(super) fn foreground() -> isize {
+        x::active_window()
+    }
+
+    /// Clipboard was set by `deliver` (GPUI owns the X selection).
+    pub(super) fn paste(_text: &str, target: isize) -> (Outcome, String) {
+        let mut notes = Vec::new();
+        if !x::has_x11() && !x::is_wayland() {
+            return (Outcome::Failed("no display".into()), String::new());
+        }
+        // 1. Wait for the hotkey modifiers to be released, then force key-ups.
+        let start = Instant::now();
+        let held = |m: (bool, bool, bool, bool)| m.0 || m.1 || m.2 || m.3;
+        while held(x::pressed_modifiers()) && start.elapsed() < Duration::from_millis(MODIFIER_WAIT_MS) {
+            std::thread::sleep(Duration::from_millis(15));
+        }
+        if held(x::pressed_modifiers()) {
+            notes.push("forced_modifier_release".into());
+            x::release_modifiers();
+        }
+        // 2. Refocus the original app if Hush took focus.
+        let me = std::process::id();
+        let mut fg = x::active_window();
+        if target != 0 && (fg == 0 || x::window_pid(fg) == Some(me)) {
+            let ok = x::activate(target);
+            notes.push(format!("refocus={ok}"));
+            fg = x::active_window();
+        }
+        if x::has_x11() && x::window_pid(fg) == Some(me) {
+            return (Outcome::Failed("Hush itself is focused".into()), notes.join(" "));
+        }
+        if target != 0 && fg != target {
+            notes.push("focus_changed_since_start".into());
+        }
+        // Give the clipboard owner a beat before the target asks for it.
+        std::thread::sleep(Duration::from_millis(40));
+        match x::send_ctrl_v() {
+            Ok(via) => {
+                notes.push(format!("via={via}"));
+                (Outcome::Pasted, notes.join(" "))
+            }
+            Err(e) => (Outcome::Failed(e), notes.join(" ")),
+        }
+    }
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 mod imp {
     use super::Outcome;
     pub(super) fn foreground() -> isize {

@@ -196,7 +196,11 @@ pub(crate) fn pressed_modifiers() -> (bool, bool, bool, bool) {
         let down = |vk: VIRTUAL_KEY| unsafe { (GetAsyncKeyState(vk.0 as i32) as u16 & 0x8000) != 0 };
         (down(VK_CONTROL), down(VK_MENU), down(VK_SHIFT), down(VK_LWIN) || down(VK_RWIN))
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        crate::platform::linux::pressed_modifiers()
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         (false, false, false, false)
     }
@@ -233,13 +237,22 @@ fn chord_down(chord: &Chord) -> bool {
         }
         true
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        let (ctrl, alt, shift, win) = pressed_modifiers();
+        if (chord.ctrl && !ctrl) || (chord.alt && !alt) || (chord.shift && !shift) || (chord.win && !win) {
+            return false;
+        }
+        chord.key.as_deref().is_none_or(crate::platform::linux::key_down)
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = chord;
         false
     }
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn vk_for_key(key: &str) -> Option<u16> {
     if key.len() == 1 {
         let c = key.chars().next()?.to_ascii_uppercase();

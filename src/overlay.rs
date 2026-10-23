@@ -381,6 +381,16 @@ fn overlay_display(cx: &App) -> Option<std::rc::Rc<dyn gpui::PlatformDisplay>> {
             return Some(d.clone());
         }
     }
+    // Linux: the monitor under the mouse pointer.
+    #[cfg(target_os = "linux")]
+    if let Some((x, y)) = crate::platform::linux::cursor_pos() {
+        let p = point(px(x as f32), px(y as f32));
+        if let Some(d) = displays.iter().find(|d| d.bounds().contains(&p)) {
+            return Some(d.clone());
+        }
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    let _ = displays;
     cx.primary_display()
 }
 

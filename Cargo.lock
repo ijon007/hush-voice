@@ -2934,8 +2934,10 @@ name = "hush-voice"
 version = "0.1.4"
 dependencies = [
  "cpal",
+ "dirs 6.0.0",
  "global-hotkey",
  "gpui",
+ "gtk",
  "hound",
  "raw-window-handle",
  "rfd",
@@ -2946,6 +2948,7 @@ dependencies = [
  "whisper-rs",
  "windows 0.61.3",
  "winresource",
+ "x11",
 ]
 
 [[package]]

@@ -67,7 +67,16 @@ pub(crate) fn play(cue: Cue) {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+pub(crate) fn play(cue: Cue) {
+    let name = match cue {
+        Cue::Start => "start",
+        Cue::Stop => "stop",
+    };
+    crate::platform::linux::play_wav(name, buffer(cue));
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub(crate) fn play(_cue: Cue) {
     let _ = buffer;
 }

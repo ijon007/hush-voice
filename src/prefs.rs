@@ -245,11 +245,22 @@ pub(crate) mod autostart {
         }
     }
 
-    #[cfg(not(windows))]
+    /// Linux: ~/.config/autostart/hush-voice.desktop (XDG autostart).
+    #[cfg(target_os = "linux")]
+    pub(crate) fn enabled() -> bool {
+        crate::platform::linux::autostart_enabled()
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn set(on: bool) {
+        crate::platform::linux::set_autostart(on)
+    }
+
+    #[cfg(not(any(windows, target_os = "linux")))]
     pub(crate) fn enabled() -> bool {
         false
     }
 
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "linux")))]
     pub(crate) fn set(_on: bool) {}
 }
