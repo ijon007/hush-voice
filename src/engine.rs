@@ -244,7 +244,10 @@ pub(crate) fn transcribe(
         Some((p, st)) if p == path => (st, true),
         _ => (ctx.create_state().map_err(|e| e.to_string())?, false),
     };
-    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(8) as i32;
+    let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    // Linux: leave a core for the UI / X server (2-CPU VMs froze otherwise).
+    let cores = if cfg!(target_os = "linux") { cores.saturating_sub(1).max(1) } else { cores };
+    let threads = cores.min(8) as i32;
     let lang = if is_english_only(path) { "en" } else { language };
     // Whisper always encodes a 30 s window; dictation clips are short, so
     // shrink the encoder context to the clip (50 frames/s plus headroom).

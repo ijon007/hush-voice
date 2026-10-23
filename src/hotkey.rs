@@ -44,6 +44,7 @@ pub(crate) fn register_hotkey(cx: &mut App) {
     cx.spawn(async move |cx| {
         let mut lock_was_down = false;
         let mut hold_was_down = false;
+        let mut up_polls = 0u32;
         loop {
             Timer::after(Duration::from_millis(16)).await;
             let _ = cx.update(|cx| {
@@ -53,6 +54,13 @@ pub(crate) fn register_hotkey(cx: &mut App) {
                 };
                 while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
                     if capturing || ptt != Some(event.id()) {
+                        continue;
+                    }
+                    // Linux/X11: keyboard autorepeat turns a held chord into a
+                    // Released+Pressed pair ~30x/s, which re-created the pill
+                    // (window + mic + whisper) every repeat and froze slow
+                    // machines. There we only use the polled key state below.
+                    if cfg!(target_os = "linux") {
                         continue;
                     }
                     match event.state {
@@ -74,13 +82,18 @@ pub(crate) fn register_hotkey(cx: &mut App) {
                 }
                 lock_was_down = lock_down;
 
-                if hold_down && !hold_was_down && ptt.is_none() {
+                let poll_shows = ptt.is_none() || cfg!(target_os = "linux");
+                if hold_down && !hold_was_down && poll_shows {
                     show_overlay(cx);
                 }
                 hold_was_down = hold_down;
 
                 // Safety net: a missed key-up must never leave the hold pill stuck.
-                if !hold_down && overlay_visible_unlocked(cx) {
+                // Linux: require ~80 ms of key-up so an autorepeat blip doesn't count.
+                up_polls = if hold_down { 0 } else { up_polls.saturating_add(1) };
+                let need = if cfg!(target_os = "linux") { 5 } else { 1 };
+                if up_polls >= need && overlay_visible_unlocked(cx) {
+                    crate::crashlog::debug("hotkey: hold up");
                     hide_overlay(cx);
                 }
             });

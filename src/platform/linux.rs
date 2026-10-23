@@ -270,6 +270,11 @@ pub(crate) fn place_overlay(x: i32, y: i32, w: i32, h: i32) -> bool {
             return false;
         };
         unsafe {
+            // No WM frame/title bar (non-composited WMs like Openbox add one
+            // even for client-decorated windows): _MOTIF_WM_HINTS decorations=0.
+            let hints: [std::os::raw::c_long; 5] = [2, 0, 0, 0, 0];
+            let motif = atom(d, "_MOTIF_WM_HINTS");
+            xlib::XChangeProperty(d, win, motif, motif, 32, xlib::PropModeReplace, hints.as_ptr() as *const c_uchar, 5);
             xlib::XMoveWindow(d, win, x, y);
             wm_state(d, win, &["_NET_WM_STATE_ABOVE", "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER"]);
             xlib::XFlush(d);
@@ -445,4 +450,57 @@ pub(crate) fn play_wav(name: &str, buf: &'static [u8]) {
             }
         }
     });
+}
+
+#[link(name = "Xext")]
+unsafe extern "C" {
+    fn XShapeCombineRectangles(
+        d: *mut xlib::Display, w: c_ulong, dest_kind: c_int, x: c_int, y: c_int,
+        rects: *mut xlib::XRectangle, n: c_int, op: c_int, ordering: c_int,
+    );
+}
+
+/// True when a compositing manager runs (so window transparency works).
+fn compositor_running(d: *mut xlib::Display) -> bool {
+    unsafe {
+        let screen = xlib::XDefaultScreen(d);
+        let sel = atom(d, &format!("_NET_WM_CM_S{screen}"));
+        xlib::XGetSelectionOwner(d, sel) != 0
+    }
+}
+
+/// Without a compositor the pill's transparent window shows as an opaque
+/// box. Clip our w x h window to the capsule `(x, y, cw, ch)` with XShape.
+/// True when done (or not needed); false until the window is mapped.
+pub(crate) fn shape_overlay(w: i32, h: i32, (x, y, cw, ch): (i32, i32, i32, i32)) -> bool {
+    with_x(|d| {
+        if compositor_running(d) {
+            return true;
+        }
+        let Some((win, ..)) = own_windows(d).into_iter().find(|(_, ww, hh)| *ww == w && *hh == h) else {
+            return false;
+        };
+        // One rectangle per row approximating the rounded ends.
+        let r = ch as f32 / 2.0;
+        let mut rects: Vec<xlib::XRectangle> = (0..ch)
+            .map(|row| {
+                let dy = (row as f32 + 0.5 - r).abs();
+                let inset = (r - (r * r - dy * dy).max(0.0).sqrt()).round() as i32;
+                xlib::XRectangle {
+                    x: (x + inset) as i16,
+                    y: (y + row) as i16,
+                    width: (cw - 2 * inset).max(0) as u16,
+                    height: 1,
+                }
+            })
+            .collect();
+        unsafe {
+            // ShapeBounding = 0, ShapeSet = 0, Unsorted = 0
+            XShapeCombineRectangles(d, win, 0, 0, 0, rects.as_mut_ptr(), rects.len() as c_int, 0, 0);
+            xlib::XFlush(d);
+        }
+        crate::crashlog::debug("pill: no compositor, clipped window to capsule");
+        true
+    })
+    .unwrap_or(true)
 }
