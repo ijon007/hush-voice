@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Hush
+GenericName=Voice Dictation
+Comment=Local voice dictation powered by Whisper
+Exec=hush-voice
+Icon=hush-voice
+Terminal=false
+Categories=Utility;AudioVideo;
+Keywords=dictation;voice;speech;whisper;transcribe;
+StartupNotify=true
+StartupWMClass=hush-voice

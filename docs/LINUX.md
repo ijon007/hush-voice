@@ -53,3 +53,16 @@ Under Wayland, Hush runs through XWayland and degrades gracefully:
 ## Packaging (later)
 - **AppImage:** bundle the binary plus assets with linuxdeploy (gtk plugin). Autostart already respects `$APPIMAGE`.
 - **.deb:** `cargo-deb`, with a `.desktop` file and icons in `/usr/share`, and the deps above as `Depends`.
+
+## Packaging (.deb / AppImage)
+
+`scripts/release-linux.sh <version>` builds `dist/Hush-<ver>-amd64.deb` and
+`dist/Hush-<ver>-x86_64.AppImage`. The binary must target glibc <= 2.39 (Ubuntu 24.04);
+on newer hosts the script builds inside an Ubuntu 24.04 chroot at `/opt/noble`:
+
+    sudo debootstrap --variant=minbase --include=ca-certificates,curl noble /opt/noble http://archive.ubuntu.com/ubuntu
+    # then inside: universe repo, build deps (see README build command + libxdo-dev), rustup
+
+Needs on the host: rsvg-convert (librsvg2-bin), dpkg-deb, fakeroot, file, objdump.
+The .deb pulls runtime deps (GTK3, ayatana-appindicator, ALSA, xdotool, …) on install.
+The AppImage bundles only the binary and relies on those system libs being present.

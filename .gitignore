@@ -1,3 +1,5 @@
 /target/
 *.pdb
 /installer/Output/
+/target-noble/
+/dist/
