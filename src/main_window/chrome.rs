@@ -26,6 +26,10 @@ impl MainWindow {
                     .pl(px(SIDEBAR_PAD + ITEM_PAD))
                     .gap(px(7.))
                     .window_control_area(WindowControlArea::Drag)
+                    // X11/Wayland ignore control areas; ask the WM to move us.
+                    .when(cfg!(target_os = "linux"), |el| {
+                        el.on_mouse_down(gpui::MouseButton::Left, |_, window, _| window.start_window_move())
+                    })
                     .child(
                         // Brand mark: the transparent wave logo, tinted to the theme text.
                         svg().path("logo/mark.svg").w(px(20.)).h(px(18.)).flex_none().text_color(t.text),

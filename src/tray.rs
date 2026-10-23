@@ -10,6 +10,7 @@ use gpui::{App, Timer, Window};
 static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
 
 /// Remember the main window so the tray can show/hide it.
+#[cfg(windows)]
 pub(crate) fn register_main(window: &Window) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     if let Ok(handle) = HasWindowHandle::window_handle(window)
@@ -17,16 +18,13 @@ pub(crate) fn register_main(window: &Window) {
     {
         MAIN_HWND.store(win32.hwnd.get(), Ordering::Relaxed);
     }
-    #[cfg(target_os = "linux")]
-    if let Ok(handle) = HasWindowHandle::window_handle(window) {
-        let xid = match handle.as_raw() {
-            RawWindowHandle::Xlib(h) => h.window as isize,
-            RawWindowHandle::Xcb(h) => h.window.get() as isize,
-            _ => 0, // Wayland: no hide-to-tray, the WM owns the surface
-        };
-        MAIN_HWND.store(xid, Ordering::Relaxed);
-    }
+
 }
+
+/// GPUI 0.2.2's X11 window panics in window_handle() ("not implemented"), so
+/// Linux finds the XID itself (platform::linux::own_main_window) on first hide.
+#[cfg(not(windows))]
+pub(crate) fn register_main(_window: &Window) {}
 
 #[cfg(windows)]
 fn hwnd() -> Option<windows::Win32::Foundation::HWND> {
@@ -44,9 +42,15 @@ pub(crate) fn hide_main() {
         }
     }
     #[cfg(target_os = "linux")]
-    match MAIN_HWND.load(Ordering::Relaxed) {
-        0 => {}
-        xid => crate::platform::linux::hide_window(xid),
+    {
+        let mut xid = MAIN_HWND.load(Ordering::Relaxed);
+        if xid == 0 {
+            xid = crate::platform::linux::own_main_window();
+            MAIN_HWND.store(xid, Ordering::Relaxed);
+        }
+        if xid != 0 {
+            crate::platform::linux::hide_window(xid);
+        }
     }
 }
 
@@ -67,7 +71,7 @@ pub(crate) fn show_main() {
     }
     #[cfg(target_os = "linux")]
     match MAIN_HWND.load(Ordering::Relaxed) {
-        0 => {}
+        0 => crate::platform::linux::show_window(crate::platform::linux::own_main_window()),
         xid => crate::platform::linux::show_window(xid),
     }
 }

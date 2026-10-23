@@ -64,6 +64,9 @@ fn main() {
                 }),
                 is_resizable: false,
                 is_minimizable: true,
+                // Linux: draw our own titlebar instead of the WM's (Windows
+                // keeps GPUI's default, which hides the native caption).
+                window_decorations: cfg!(target_os = "linux").then_some(gpui::WindowDecorations::Client),
                 window_min_size: Some(size(px(MIN_W.min(w)), px(MIN_H.min(h)))),
                 ..Default::default()
             },

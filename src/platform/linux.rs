@@ -219,6 +219,41 @@ pub(crate) fn activate(w: isize) -> bool {
     ok && active_window() == w
 }
 
+/// Our biggest top-level window (the main window; the pill is small).
+pub(crate) fn own_main_window() -> isize {
+    let me = std::process::id();
+    with_x(|d| unsafe {
+        let root = xlib::XDefaultRootWindow(d);
+        let (mut ty, mut fmt, mut n, mut after) = (0, 0 as c_int, 0, 0);
+        let mut data: *mut c_uchar = std::ptr::null_mut();
+        let ok = xlib::XGetWindowProperty(
+            d, root, atom(d, "_NET_CLIENT_LIST"), 0, 1024, xlib::False, xlib::XA_WINDOW,
+            &mut ty, &mut fmt, &mut n, &mut after, &mut data,
+        );
+        if ok != 0 || data.is_null() {
+            return 0;
+        }
+        let list = std::slice::from_raw_parts(data as *const c_ulong, n as usize).to_vec();
+        xlib::XFree(data as *mut _);
+        let mut best = (0u64, 0isize);
+        for w in list {
+            if window_prop(d, w, "_NET_WM_PID") != Some(me as c_ulong) {
+                continue;
+            }
+            let mut attrs: xlib::XWindowAttributes = std::mem::zeroed();
+            if xlib::XGetWindowAttributes(d, w, &mut attrs) == 0 {
+                continue;
+            }
+            let area = attrs.width as u64 * attrs.height as u64;
+            if area > best.0 {
+                best = (area, w as isize);
+            }
+        }
+        best.1
+    })
+    .unwrap_or(0)
+}
+
 pub(crate) fn hide_window(w: isize) {
     let _ = with_x(|d| unsafe {
         xlib::XUnmapWindow(d, w as c_ulong);
@@ -227,6 +262,9 @@ pub(crate) fn hide_window(w: isize) {
 }
 
 pub(crate) fn show_window(w: isize) {
+    if w == 0 {
+        return;
+    }
     let _ = with_x(|d| unsafe {
         xlib::XMapRaised(d, w as c_ulong);
         xlib::XFlush(d);
