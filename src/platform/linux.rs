@@ -219,6 +219,66 @@ pub(crate) fn activate(w: isize) -> bool {
     ok && active_window() == w
 }
 
+fn own_windows(d: *mut xlib::Display) -> Vec<(c_ulong, i32, i32)> {
+    let me = std::process::id() as c_ulong;
+    unsafe {
+        let root = xlib::XDefaultRootWindow(d);
+        let (mut ty, mut fmt, mut n, mut after) = (0, 0 as c_int, 0, 0);
+        let mut data: *mut c_uchar = std::ptr::null_mut();
+        let ok = xlib::XGetWindowProperty(
+            d, root, atom(d, "_NET_CLIENT_LIST"), 0, 1024, xlib::False, xlib::XA_WINDOW,
+            &mut ty, &mut fmt, &mut n, &mut after, &mut data,
+        );
+        if ok != 0 || data.is_null() {
+            return Vec::new();
+        }
+        let list = std::slice::from_raw_parts(data as *const c_ulong, n as usize).to_vec();
+        xlib::XFree(data as *mut _);
+        list.into_iter()
+            .filter(|w| window_prop(d, *w, "_NET_WM_PID") == Some(me))
+            .filter_map(|w| {
+                let mut a: xlib::XWindowAttributes = std::mem::zeroed();
+                (xlib::XGetWindowAttributes(d, w, &mut a) != 0).then_some((w, a.width, a.height))
+            })
+            .collect()
+    }
+}
+
+fn wm_state(d: *mut xlib::Display, w: c_ulong, states: &[&str]) {
+    unsafe {
+        let root = xlib::XDefaultRootWindow(d);
+        for st in states {
+            let mut ev: xlib::XEvent = std::mem::zeroed();
+            ev.client_message.type_ = xlib::ClientMessage;
+            ev.client_message.window = w;
+            ev.client_message.message_type = atom(d, "_NET_WM_STATE");
+            ev.client_message.format = 32;
+            ev.client_message.data.set_long(0, 1); // _NET_WM_STATE_ADD
+            ev.client_message.data.set_long(1, atom(d, st) as i64);
+            ev.client_message.data.set_long(3, 1);
+            let mask = xlib::SubstructureRedirectMask | xlib::SubstructureNotifyMask;
+            xlib::XSendEvent(d, root, xlib::False, mask, &mut ev);
+        }
+    }
+}
+
+/// Move the recording pill (our window of exactly w x h) to x,y and keep it on top.
+/// False until the window is mapped, so the caller retries.
+pub(crate) fn place_overlay(x: i32, y: i32, w: i32, h: i32) -> bool {
+    with_x(|d| {
+        let Some((win, ..)) = own_windows(d).into_iter().find(|(_, ww, hh)| *ww == w && *hh == h) else {
+            return false;
+        };
+        unsafe {
+            xlib::XMoveWindow(d, win, x, y);
+            wm_state(d, win, &["_NET_WM_STATE_ABOVE", "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER"]);
+            xlib::XFlush(d);
+        }
+        true
+    })
+    .unwrap_or(true) // no X11 (Wayland): nothing we can do, stop retrying
+}
+
 /// Our biggest top-level window (the main window; the pill is small).
 pub(crate) fn own_main_window() -> isize {
     let me = std::process::id();

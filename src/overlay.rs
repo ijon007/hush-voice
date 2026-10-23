@@ -493,7 +493,14 @@ fn open_overlay(cx: &mut App, locked: bool) {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 display_id: display.map(|d| d.id()),
                 titlebar: None,
-                window_background: WindowBackgroundAppearance::Opaque,
+                // Linux: transparent so a compositor shows just the pill;
+                // no WM frame (Windows keeps its own frame stripping below).
+                window_background: if cfg!(target_os = "linux") {
+                    WindowBackgroundAppearance::Transparent
+                } else {
+                    WindowBackgroundAppearance::Opaque
+                },
+                window_decorations: cfg!(target_os = "linux").then_some(gpui::WindowDecorations::Client),
                 kind: WindowKind::PopUp,
                 focus: false,
                 is_movable: false,
@@ -707,7 +714,19 @@ unsafe fn strip_window_frame(hwnd: windows::Win32::Foundation::HWND) {
 
 /// Finish window setup once the HWND has a real size (DWM attrs + topmost).
 fn clip_overlay_to_capsule(_window: &Window) -> bool {
-    #[cfg(not(windows))]
+    // Linux: WMs ignore the requested origin for managed windows, so move it
+    // ourselves and keep it above everything, out of the taskbar.
+    #[cfg(target_os = "linux")]
+    {
+        let b = _window.bounds();
+        crate::platform::linux::place_overlay(
+            f32::from(b.origin.x) as i32,
+            f32::from(b.origin.y) as i32,
+            f32::from(b.size.width) as i32,
+            f32::from(b.size.height) as i32,
+        )
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = _window;
         true
